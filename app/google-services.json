@@ -1,0 +1,56 @@
+{
+  "project_info": {
+    "project_number": "70054013320",
+    "firebase_url": "https://banjulway-default-rtdb.firebaseio.com",
+    "project_id": "banjulway",
+    "storage_bucket": "banjulway.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:70054013320:android:e3a90846ecbd66338f323d",
+        "android_client_info": {
+          "package_name": "com.aistudio.wayGo.kxmpzq"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "70054013320-95605n3pgqp7s4e3b5s2gik5cvunsfkk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.wayGo.kxmpzq",
+            "certificate_hash": "0dc3e186045e02fd04b2a671b597a0f549062704"
+          }
+        },
+        {
+          "client_id": "70054013320-rolvj2hf6qg7khi2i305td14c9aa60lu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.wayGo.kxmpzq",
+            "certificate_hash": "4cd523b1860624038e789fb188aaf306c0eb3916"
+          }
+        },
+        {
+          "client_id": "70054013320-38402k20jc0s6kgc7c76erml6m3ac4ji.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyByLlpoQouM9CQ-Y1qGIpOczoiO3H9s2kQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "70054013320-38402k20jc0s6kgc7c76erml6m3ac4ji.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

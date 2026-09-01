@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
     private var currentViewModel: WayGoViewModel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_MyApplication)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -378,7 +379,7 @@ fun showAndroidSystemNotification(context: Context, title: String, message: Stri
     val notification = builder
         .setContentTitle(title)
         .setContentText(message)
-        .setSmallIcon(android.R.drawable.stat_notify_chat) // standard built-in icon
+        .setSmallIcon(R.mipmap.ic_launcher) // use app icon
         .setContentIntent(pendingIntent)
         .setAutoCancel(true)
         .build()

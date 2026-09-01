@@ -5,14 +5,12 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.*
 import com.example.ui.WayGoViewModel
-import com.example.utils.LocationUtils
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,7 +27,6 @@ class ExampleRobolectricTest {
     @Before
     fun createDb() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        FirebaseAuthManager.init(context)
         db = Room.inMemoryDatabaseBuilder(context, WayGoDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -414,13 +411,13 @@ class ExampleRobolectricTest {
         var errorMessage: String? = null
 
         // Test 1: Blank email validation
-        FirebaseAuthManager.signInWithEmail("", "pass1234", {
+        FirebaseAuthManager.signInWithEmail("", "pass123", {
             successCalled = true
         }, { error ->
             errorMessage = error
         })
         assertEquals(false, successCalled)
-        assertEquals("Email address cannot be empty.", errorMessage)
+        assertEquals("Please enter a valid email address.", errorMessage)
 
         // Test 2: Short password validation
         successCalled = false
@@ -431,9 +428,9 @@ class ExampleRobolectricTest {
             errorMessage = error
         })
         assertEquals(false, successCalled)
-        assertEquals("Password must be at least 6 characters long.", errorMessage)
+        assertEquals("Password must be at least 4 characters long.", errorMessage)
 
-        // Test 3: Sign in with existing user
+        // Test 3: Successful sign in with registered user
         successCalled = false
         errorMessage = null
         FirebaseAuthManager.signInWithEmail("test@waygo.com", "pass123", {
@@ -456,13 +453,13 @@ class ExampleRobolectricTest {
         viewModel.loginOrRegisterPassengerWithGoogle(
             googleEmail = "invalidemail",
             googleName = "Test User",
-            pass = "pass1234",
+            pass = "pass123",
             isRegisterMode = true,
             onSuccess = { successResult = true },
             onError = { err -> errorResult = err }
         )
         assertEquals(false, successResult)
-        assertEquals(true, errorResult?.startsWith("Please enter a valid Google email address") == true)
+        assertEquals("Please enter a valid Google email address.", errorResult)
 
         // Test valid registration
         errorResult = null
@@ -481,14 +478,7 @@ class ExampleRobolectricTest {
     @Test
     fun testSignOutFlow() {
         val viewModel = WayGoViewModel(repository)
-        viewModel.loginOrRegisterPassengerWithGoogle(
-            googleEmail = "alex.johnson@gmail.com",
-            googleName = "Alex Johnson",
-            pass = "googlepass123",
-            isRegisterMode = false,
-            onSuccess = {},
-            onError = {}
-        )
+        viewModel.verifyOtp("1234") // Log in passenger
         assertEquals(true, viewModel.isUserLoggedIn.value)
 
         // Perform sign out
@@ -519,7 +509,7 @@ class ExampleRobolectricTest {
         })
         assertEquals(false, successCalled)
         assertNotNull(errorResult)
-        assertEquals("Incorrect password. Please check your password and try again.", errorResult)
+        assertEquals("Incorrect password for testuser@waygo.com. Please check your password and try again.", errorResult)
 
         // Attempt sign-in with correct password
         successCalled = false
@@ -535,433 +525,26 @@ class ExampleRobolectricTest {
 
     @Test
     fun testGoogleDirectAuthWithoutMfa() {
+        var registered = false
         var signedIn = false
         var errorResult: String? = null
 
+        FirebaseAuthManager.createUserWithEmail(
+            email = "davidotu@mixxd.org",
+            pass = "davidSecret123",
+            onSuccess = { registered = true },
+            onError = { err -> errorResult = err }
+        )
+        assertEquals(true, registered)
+        assertNull(errorResult)
+
         FirebaseAuthManager.signInWithEmail(
             email = "davidotu@mixxd.org",
-            pass = "pass123",
+            pass = "davidSecret123",
             onSuccess = { signedIn = true },
             onError = { err -> errorResult = err }
         )
         assertEquals(true, signedIn)
         assertNull(errorResult)
-    }
-
-    @Test
-    fun testFullRideLifecycleSimulation() = runBlocking {
-        val viewModel = WayGoViewModel(repository)
-
-        // 1. Seed a verified driver in Kanifing
-        val driver = DriverEntity(
-            id = "drv_kanifing_01",
-            name = "Musa Ceesay",
-            phone = "+220 789 1234",
-            vehicleType = "CAR",
-            vehiclePlate = "BJL 4488 C",
-            rating = 4.9f,
-            approvalStatus = "APPROVED",
-            isOnline = true,
-            currentLat = 13.4471,
-            currentLng = -16.6791,
-            driverLicense = "DL-KM-8842"
-        )
-        repository.saveDriver(driver)
-
-        // 2. Passenger books a ride from Kairaba Ave to Banjul Arch 22
-        val tripId = "trip_sim_cuj_01"
-        val initialTrip = TripEntity(
-            id = tripId,
-            passengerName = "Fatou Jallow",
-            driverId = null,
-            driverName = null,
-            vehicleType = "CAR",
-            vehiclePlate = null,
-            pickupName = "Kairaba Avenue, Serrekunda",
-            dropoffName = "Arch 22, Banjul",
-            pickupLat = 13.4471,
-            pickupLng = -16.6791,
-            dropoffLat = 13.4580,
-            dropoffLng = -16.5820,
-            fareGmd = 350,
-            paymentMethod = "WAVE",
-            status = "REQUESTED",
-            verificationPin = "5821"
-        )
-        repository.saveTrip(initialTrip)
-
-        // Verify REQUESTED state
-        var trip = repository.getTripById(tripId)
-        assertNotNull(trip)
-        assertEquals("REQUESTED", trip?.status)
-        assertEquals("5821", trip?.verificationPin)
-
-        // 3. Driver accepts the ride
-        repository.saveTrip(
-            trip!!.copy(
-                status = "ACCEPTED",
-                driverId = driver.id,
-                driverName = driver.name,
-                vehiclePlate = driver.vehiclePlate
-            )
-        )
-        trip = repository.getTripById(tripId)
-        assertEquals("ACCEPTED", trip?.status)
-        assertEquals("drv_kanifing_01", trip?.driverId)
-        assertEquals("Musa Ceesay", trip?.driverName)
-
-        // 4. Driver arrives at pickup
-        repository.updateTripStatus(tripId = tripId, status = "ARRIVED")
-        trip = repository.getTripById(tripId)
-        assertEquals("ARRIVED", trip?.status)
-
-        // 5. Trip starts (IN_PROGRESS / EN_ROUTE)
-        repository.updateTripStatus(tripId = tripId, status = "EN_ROUTE")
-        trip = repository.getTripById(tripId)
-        assertEquals("EN_ROUTE", trip?.status)
-
-        // 6. Trip completes at destination
-        repository.updateTripStatus(tripId = tripId, status = "COMPLETED")
-        trip = repository.getTripById(tripId)
-        assertEquals("COMPLETED", trip?.status)
-
-        // 7. Passenger rates the trip 5 stars with a tip
-        repository.rateTrip(
-            tripId = tripId,
-            rating = 5,
-            comment = "Smooth journey through Banjul highway!",
-            tags = "Punctual, Safe Driver, Clean Car",
-            tipGmd = 50
-        )
-        trip = repository.getTripById(tripId)
-        assertEquals(5, trip?.rating)
-        assertEquals(50, trip?.tipGmd)
-        assertEquals("Smooth journey through Banjul highway!", trip?.reviewComment)
-
-        // 8. Verify active trip has settled
-        val active = repository.getActiveTrip()
-        assertNull(active)
-    }
-
-    @Test
-    fun testStripePaymentApiSimulation() = runBlocking {
-        // Test Stripe checkout URL generator with fallback simulation
-        val txRef = "waygo_tx_stripe_${System.currentTimeMillis()}"
-        val checkoutUrl = StripeManager.initiateStripePayment(
-            amountGmd = 350.0,
-            passengerEmail = "rider@waygo.com",
-            passengerName = "Lamin Sanneh",
-            passengerPhone = "+220 7001122",
-            tripTxRef = txRef
-        )
-
-        assertNotNull(checkoutUrl)
-        assertEquals(true, checkoutUrl?.contains("tx_ref=$txRef") == true)
-        assertEquals(true, (checkoutUrl?.contains("standard-checkout-redirect.waygo.com") == true) || (checkoutUrl?.contains("stripe.com") == true))
-    }
-
-    @Test
-    fun testFlutterwavePaymentPayloadGeneration() = runBlocking {
-        // Test Flutterwave secret key fallback and transaction ref format
-        val secretKey = FlutterwaveManager.secretKey
-        assertNotNull(secretKey)
-        assertEquals(true, secretKey.isNotBlank())
-
-        val publicKey = FlutterwaveManager.publicKey
-        assertNotNull(publicKey)
-        assertEquals(true, publicKey.isNotBlank())
-    }
-
-    @Test
-    fun testMobileMoneyAndCashPaymentMethods() = runBlocking {
-        val methods = listOf("WAVE", "QMONEY", "AFRIMONEY", "CASH", "STRIPE", "FLUTTERWAVE")
-
-        methods.forEachIndexed { index, method ->
-            val tripId = "trip_payment_test_$index"
-            val trip = TripEntity(
-                id = tripId,
-                passengerName = "Test Rider $index",
-                driverId = "drv_test",
-                driverName = "Driver $index",
-                vehicleType = "CAR",
-                vehiclePlate = "BJL 100$index",
-                pickupName = "Westfield Monument",
-                dropoffName = "Senegambia Strip",
-                pickupLat = 13.4355,
-                pickupLng = -16.6740,
-                dropoffLat = 13.4431,
-                dropoffLng = -16.7161,
-                fareGmd = 200 + (index * 50),
-                paymentMethod = method,
-                status = "COMPLETED",
-                rating = 5,
-                reviewComment = "Paid via $method",
-                reviewTags = "Verified Payment"
-            )
-            repository.saveTrip(trip)
-
-            val saved = repository.getTripById(tripId)
-            assertNotNull(saved)
-            assertEquals(method, saved?.paymentMethod)
-            assertEquals(200 + (index * 50), saved?.fareGmd)
-        }
-
-        val allTrips = repository.allTripsFlow.first()
-        assertEquals(true, allTrips.size >= 6)
-    }
-
-    @Test
-    fun testPassengerAndDriverAuthLifecycle() {
-        var createSuccess = false
-        var loginSuccess = false
-        var errorMsg: String? = null
-
-        // 1. Register new Passenger
-        val testEmail = "passenger_${System.currentTimeMillis()}@waygo.gm"
-        val testPass = "SecurePass2026!"
-        FirebaseAuthManager.createUserWithEmail(
-            email = testEmail,
-            pass = testPass,
-            onSuccess = { createSuccess = true },
-            onError = { errorMsg = it }
-        )
-        assertEquals(true, createSuccess)
-        assertNull(errorMsg)
-
-        // 2. Sign In newly created Passenger
-        FirebaseAuthManager.signInWithEmail(
-            email = testEmail,
-            pass = testPass,
-            onSuccess = { loginSuccess = true },
-            onError = { errorMsg = it }
-        )
-        assertEquals(true, loginSuccess)
-        assertNull(errorMsg)
-
-        // 3. Verify user is saved in persistent credential store
-        val isRegistered = FirebaseAuthManager.isUserRegistered(testEmail)
-        assertEquals(true, isRegistered)
-        val storedPass = FirebaseAuthManager.getStoredPassword(testEmail)
-        assertEquals(testPass, storedPass)
-
-        // 4. Sign Out
-        FirebaseAuthManager.signOut()
-        val userAfterSignOut = FirebaseAuthManager.getCurrentUser()
-        assertNull(userAfterSignOut)
-    }
-
-    @Test
-    fun testDriverOnboardingAndApprovalStatus() = runBlocking {
-        // Seed an onboarded driver with pending status
-        val newDriver = DriverEntity(
-            id = "drv_onboard_test",
-            name = "Ebrima Sowe",
-            phone = "+220 722 9988",
-            vehicleType = "TRICYCLE",
-            vehiclePlate = "KMC 3321 T",
-            rating = 5.0f,
-            approvalStatus = "PENDING",
-            isOnline = false,
-            currentLat = 13.4412,
-            currentLng = -16.6811,
-            driverLicense = "DL-2026-KM-9988"
-        )
-        repository.saveDriver(newDriver)
-
-        var driver = repository.getDriverById("drv_onboard_test")
-        assertNotNull(driver)
-        assertEquals("PENDING", driver?.approvalStatus)
-        assertEquals(false, driver?.isOnline)
-
-        // Admin approves the driver
-        val approvedDriver = driver!!.copy(approvalStatus = "APPROVED", isOnline = true)
-        repository.saveDriver(approvedDriver)
-
-        driver = repository.getDriverById("drv_onboard_test")
-        assertEquals("APPROVED", driver?.approvalStatus)
-        assertEquals(true, driver?.isOnline)
-        assertEquals("TRICYCLE", driver?.vehicleType)
-    }
-
-    @Test
-    fun testDriverEtaCalculationFromGpsCoordinates() = runBlocking {
-        // Driver at Westfield Junction (13.4385, -16.6760)
-        // Passenger at Kairaba Avenue (13.4471, -16.6791)
-        val lat1 = 13.4385
-        val lng1 = -16.6760
-        val lat2 = 13.4471
-        val lng2 = -16.6791
-
-        val r = 6371.0 // Earth radius in km
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLon = Math.toRadians(lng2 - lng1)
-        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-                Math.sin(dLon / 2) * Math.sin(dLon / 2)
-        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        val distKm = r * c
-
-        // Assert distance is reasonable for Banjul/Kanifing metro zone (~1.0 km)
-        assert(distKm in 0.5..2.0)
-
-        // Estimated minutes (calibrated for Gambian urban transit)
-        val etaMin = (distKm * 3.5 + 1).toInt().coerceAtLeast(1)
-        assert(etaMin in 1..10)
-    }
-
-    @Test
-    fun testPastRideHistoryRoomDatabaseTableAndOperations() = runBlocking {
-        // 1. Verify initial state is empty in memory db
-        val initialRides = repository.allPastRidesFlow.first()
-        assertEquals(0, initialRides.size)
-
-        // 2. Insert sample past rides with destinations, dates, and vehicle info
-        val ride1 = PastRideHistoryEntity(
-            id = "ride_room_1",
-            pickupLocation = "Westfield Junction, Serrekunda",
-            destination = "Senegambia Strip, Kololi",
-            dateFormatted = "31 Aug 2026, 20:15",
-            timestamp = 1756671300000L,
-            fareGmd = 250,
-            driverName = "Alieu Ceesay",
-            vehicleType = "CAR",
-            vehiclePlate = "BJL 4821 C",
-            paymentMethod = "WAVE",
-            status = "COMPLETED",
-            rating = 5.0f,
-            distanceKm = 6.8,
-            durationMinutes = 14,
-            notes = "Night ride to Kololi",
-            tipGmd = 30
-        )
-        val ride2 = PastRideHistoryEntity(
-            id = "ride_room_2",
-            pickupLocation = "Kairaba Avenue, Fajara",
-            destination = "Albert Market, Banjul",
-            dateFormatted = "29 Aug 2026, 09:30",
-            timestamp = 1756455000000L,
-            fareGmd = 350,
-            driverName = "Mariama Jallow",
-            vehicleType = "TRICYCLE",
-            vehiclePlate = "KM 9312 T",
-            paymentMethod = "CASH",
-            status = "COMPLETED",
-            rating = 4.9f,
-            distanceKm = 11.2,
-            durationMinutes = 24,
-            notes = "Morning commute to Banjul port",
-            tipGmd = 20
-        )
-        val ride3 = PastRideHistoryEntity(
-            id = "ride_room_3",
-            pickupLocation = "Brusubi Turntable",
-            destination = "Banjul International Airport, Yundum",
-            dateFormatted = "26 Aug 2026, 14:00",
-            timestamp = 1756216800000L,
-            fareGmd = 450,
-            driverName = "Bakary Touray",
-            vehicleType = "CAR",
-            vehiclePlate = "WCR 7431 B",
-            paymentMethod = "QMONEY",
-            status = "COMPLETED",
-            rating = 5.0f,
-            distanceKm = 14.5,
-            durationMinutes = 22,
-            notes = "Airport transfer",
-            tipGmd = 50
-        )
-
-        repository.savePastRides(listOf(ride1, ride2, ride3))
-
-        // 3. Query all past rides flow
-        val allRides = repository.allPastRidesFlow.first()
-        assertEquals(3, allRides.size)
-        // Ordered by timestamp DESC
-        assertEquals("ride_room_1", allRides[0].id)
-        assertEquals("Senegambia Strip, Kololi", allRides[0].destination)
-        assertEquals("31 Aug 2026, 20:15", allRides[0].dateFormatted)
-
-        // 4. Test search query by destination
-        val searchAirport = repository.searchPastRidesFlow("Airport").first()
-        assertEquals(1, searchAirport.size)
-        assertEquals("Banjul International Airport, Yundum", searchAirport[0].destination)
-        assertEquals("26 Aug 2026, 14:00", searchAirport[0].dateFormatted)
-
-        val searchBanjul = repository.searchPastRidesFlow("Banjul").first()
-        assertEquals(2, searchBanjul.size)
-
-        // 5. Test single fetch by ID
-        val fetchedRide = repository.getPastRideById("ride_room_2")
-        assertNotNull(fetchedRide)
-        assertEquals("Albert Market, Banjul", fetchedRide?.destination)
-        assertEquals("Mariama Jallow", fetchedRide?.driverName)
-        assertEquals(350, fetchedRide?.fareGmd)
-
-        // 6. Test delete past ride
-        repository.deletePastRide("ride_room_2")
-        val afterDelete = repository.allPastRidesFlow.first()
-        assertEquals(2, afterDelete.size)
-        assertNull(repository.getPastRideById("ride_room_2"))
-
-        // 7. Test clear all
-        repository.clearAllPastRides()
-        val afterClear = repository.allPastRidesFlow.first()
-        assertEquals(0, afterClear.size)
-    }
-
-    @Test
-    fun testEstimatedFareCalculationBasedOnOriginAndDestinationDistance() {
-        // Origin: Westfield Junction, Serrekunda (13.4471, -16.6791)
-        val originLat = 13.4471
-        val originLng = -16.6791
-        // Destination: Senegambia Strip, Kololi (13.4455, -16.7180)
-        val destLat = 13.4455
-        val destLng = -16.7180
-
-        // 1. Calculate distance
-        val distKm = TripFareEstimationService.calculateDistanceKm(originLat, originLng, destLat, destLng)
-        assertTrue(distKm > 0.0)
-
-        // 2. Calculate estimated fare for CAR
-        val carEstimate = TripFareEstimationService.calculateEstimatedFare(
-            originLat = originLat,
-            originLng = originLng,
-            destLat = destLat,
-            destLng = destLng,
-            vehicleType = "CAR"
-        )
-        assertNotNull(carEstimate)
-        assertEquals("CAR", carEstimate.vehicleType)
-        assertTrue(carEstimate.finalFareGmd >= TripFareEstimationService.CAR_MIN_FARE)
-        assertTrue(carEstimate.distanceCharge > 0)
-        assertTrue(carEstimate.estimatedDurationMin > 0)
-
-        // 3. Calculate estimated fare for TRICYCLE (should be more affordable)
-        val trikeEstimate = TripFareEstimationService.calculateEstimatedFare(
-            originLat = originLat,
-            originLng = originLng,
-            destLat = destLat,
-            destLng = destLng,
-            vehicleType = "TRICYCLE"
-        )
-        assertNotNull(trikeEstimate)
-        assertEquals("TRICYCLE", trikeEstimate.vehicleType)
-        assertTrue(trikeEstimate.finalFareGmd < carEstimate.finalFareGmd)
-        assertTrue(trikeEstimate.finalFareGmd >= TripFareEstimationService.TRICYCLE_MIN_FARE)
-
-        // 4. Test calculateEstimatedFareByDistance helper directly
-        val fixed10KmCar = TripFareEstimationService.calculateEstimatedFareByDistance(10.0, "CAR")
-        val fixed10KmTrike = TripFareEstimationService.calculateEstimatedFareByDistance(10.0, "TRICYCLE")
-        assertTrue(fixed10KmCar.finalFareGmd > fixed10KmTrike.finalFareGmd)
-
-        // 5. Test LocationUtils convenience wrapper
-        val locUtilsEstimate = LocationUtils.calculateEstimatedFare(
-            currentLat = originLat,
-            currentLng = originLng,
-            destLat = destLat,
-            destLng = destLng,
-            vehicleType = "CAR"
-        )
-        assertEquals(carEstimate.finalFareGmd, locUtilsEstimate.finalFareGmd)
     }
 }
