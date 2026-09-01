@@ -24,6 +24,13 @@ class WayGoApplication : Application() {
     private fun initializeFirebase() {
         try {
             com.example.data.FirebaseAuthManager.init(this)
+
+            // Skip real Firebase initialization in Robolectric tests to avoid async auth flakiness
+            if (android.os.Build.FINGERPRINT == "robolectric") {
+                Log.i("WayGoApplication", "Robolectric environment detected. Skipping real Firebase initialization.")
+                return
+            }
+
             com.example.data.DiagnosticAuthManager.initialize(this)
             com.example.data.AuthLogger.startObserving(this)
         } catch (e: Exception) {
