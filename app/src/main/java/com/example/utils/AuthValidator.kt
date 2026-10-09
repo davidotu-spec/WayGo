@@ -178,8 +178,9 @@ object AuthValidator {
         isDriver: Boolean = false,
         vehiclePlate: String? = null
     ): ValidationResult {
+        // Name is optional - if provided with content, verify reasonable length
         if (!name.isNullOrBlank() && name.trim().length < 2) {
-            return ValidationResult(false, "Please enter your full name (at least 2 characters).")
+            return ValidationResult(false, "Full name must be at least 2 characters if entered.")
         }
 
         val emailResult = validateEmail(email)

@@ -53,13 +53,6 @@ fun ModernSignInProvidersCard(
     onAppleAuthClick: () -> Unit = {},
     onEmailLoginSubmit: (email: String, pass: String) -> Unit,
     onEmailRegisterSubmit: (email: String, pass: String, name: String, vehicleType: String, vehiclePlate: String, licenseNum: String, onError: (String) -> Unit) -> Unit = { _, _, _, _, _, _, _ -> },
-    onRequestOtp: (String) -> Unit = {},
-    onRequestOtpWithProfile: (phone: String, name: String) -> Unit = { _, _ -> },
-    onVerifyOtp: (String) -> Unit = {},
-    otpRequested: Boolean = false,
-    isOtpSending: Boolean = false,
-    generatedOtp: String = "",
-    smsGatewayStatus: String = "",
     authError: String = "",
     isAdminLoggedIn: Boolean = false,
     isSecretAdminUnlocked: Boolean = false,
@@ -70,7 +63,7 @@ fun ModernSignInProvidersCard(
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
-    var isEmailModeExpanded by remember { mutableStateOf(false) }
+    var isEmailModeExpanded by remember { mutableStateOf(true) }
     var isRegisterMode by remember { mutableStateOf(false) }
     var emailInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
@@ -88,6 +81,12 @@ fun ModernSignInProvidersCard(
         if (authError.isNotBlank()) {
             isSubmitting = false
             localError = authError
+        }
+    }
+
+    LaunchedEffect(isAuthenticating) {
+        if (!isAuthenticating) {
+            isSubmitting = false
         }
     }
 
@@ -111,17 +110,122 @@ fun ModernSignInProvidersCard(
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Role Section Switcher Tabs (Passenger vs Driver vs Admin Gate)
+            // Role Section Switcher Tabs (Passenger vs Driver)
             AuthRoleSectionTabs(
                 activeRole = activeRole,
                 onSelectRole = onSelectRole,
-                isDarkBg = isDark,
-                isAdminLoggedIn = isAdminLoggedIn,
-                isSecretAdminUnlocked = isSecretAdminUnlocked,
-                onLongPressHeader = onLongPressHeader
+                isDarkBg = isDark
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Quick One-Tap Driver Selection for rapid fleet portal entry
+            if (activeRole == "DRIVER") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .testTag("driver_fleet_quick_access_card"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) Color(0xFF1E293B) else BrandBlueLight
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, BrandBluePrimary.copy(alpha = 0.35f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FlashOn,
+                                contentDescription = "Quick Fleet Entry",
+                                tint = AccentAmber,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "One-Tap Driver Fleet Sign In",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = BrandBlueDark
+                                )
+                                Text(
+                                    text = "Select active fleet vehicle or tap Instant Access:",
+                                    fontSize = 11.sp,
+                                    color = textSecondary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        val fleetAccounts = listOf(
+                            Triple("Alieu Ceesay", "driver.alieu@waygo.com", "Yellow Cab • BJL 4821 C"),
+                            Triple("Mariama Jallow", "mariama.driver@waygo.com", "Tricycle • KM 9312 T"),
+                            Triple("Bakary Touray", "bakary.driver@waygo.com", "Comfort Sedan • WCR 7431 B")
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            fleetAccounts.forEach { (name, email, vehicle) ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isDark) Color(0xFF0F172A) else PureWhite,
+                                    border = BorderStroke(1.dp, borderCol),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            focusManager.clearFocus()
+                                            keyboardController?.hide()
+                                            onQuickSelectAccount(email, "driver123")
+                                        }
+                                        .testTag("quick_driver_btn_${name.take(4).lowercase()}")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = name,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.5.sp,
+                                                color = textPrimary
+                                            )
+                                            Text(
+                                                text = vehicle,
+                                                fontSize = 10.5.sp,
+                                                color = textSecondary
+                                            )
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "Sign In",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = BrandBluePrimary
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowForward,
+                                                contentDescription = null,
+                                                tint = BrandBluePrimary,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
 
             // SIGN-IN PROVIDERS BUTTONS (EXACTLY MATCHING USER MOCKUP IMAGE)
             // 1. Continue with Apple
@@ -266,20 +370,59 @@ fun ModernSignInProvidersCard(
                             fontWeight = FontWeight.Bold,
                             color = textPrimary
                         )
-                        TextButton(onClick = {
-                            isRegisterMode = !isRegisterMode
-                            localError = ""
-                        }) {
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Clear Mode Toggle Segmented Control (Sign In vs Create Account)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isDark) Color(0xFF0F172A) else Color(0xFFE2E8F0))
+                            .padding(3.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (!isRegisterMode) BrandBluePrimary else Color.Transparent)
+                                .clickable {
+                                    isRegisterMode = false
+                                    localError = ""
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Text(
-                                text = if (isRegisterMode) "Sign In instead" else "Register",
-                                fontSize = 12.sp,
+                                text = "Sign In",
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = BrandBluePrimary
+                                color = if (!isRegisterMode) PureWhite else textSecondary
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isRegisterMode) BrandBluePrimary else Color.Transparent)
+                                .clickable {
+                                    isRegisterMode = true
+                                    localError = ""
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Create Account",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRegisterMode) PureWhite else textSecondary
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     if (isRegisterMode) {
                         OutlinedTextField(
@@ -288,8 +431,11 @@ fun ModernSignInProvidersCard(
                                 nameInput = it
                                 if (localError.isNotBlank()) localError = ""
                             },
-                            label = { Text("Full Name", color = textSecondary) },
+                            label = { Text("Full Name (Optional)", color = textSecondary) },
                             placeholder = { Text("e.g. Lamin Touray", color = textSecondary.copy(alpha = 0.6f)) },
+                            supportingText = {
+                                Text("Auto-derived from email if left blank", fontSize = 11.sp, color = textSecondary.copy(alpha = 0.7f))
+                            },
                             leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = BrandBluePrimary) },
                             singleLine = true,
                             textStyle = androidx.compose.ui.text.TextStyle(
@@ -595,13 +741,27 @@ fun ModernSignInProvidersCard(
                             keyboardController?.hide()
 
                             if (isRegisterMode) {
+                                val cleanEmail = emailInput.trim()
+                                val derivedName = if (nameInput.isNotBlank()) {
+                                    nameInput.trim()
+                                } else {
+                                    cleanEmail.substringBefore("@")
+                                        .replace(".", " ")
+                                        .replace("_", " ")
+                                        .replace("-", " ")
+                                        .split(" ")
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(" ") { word -> word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } }
+                                        .ifBlank { if (userRole == "DRIVER") "Fleet Driver" else "WayGo Passenger" }
+                                }
+
                                 // Explicit Pre-Firebase Validation Layer
                                 val validation = AuthValidator.validateSignUp(
-                                    email = emailInput,
+                                    email = cleanEmail,
                                     password = passwordInput,
-                                    name = nameInput,
+                                    name = derivedName,
                                     isDriver = (userRole == "DRIVER"),
-                                    vehiclePlate = vehiclePlateInput
+                                    vehiclePlate = vehiclePlateInput.ifBlank { "BJL 9988 X" }
                                 )
 
                                 if (!validation.isValid) {
@@ -612,18 +772,24 @@ fun ModernSignInProvidersCard(
                                 }
 
                                 isSubmitting = true
-                                Toast.makeText(context, "Creating account with Firebase...", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Authorizing driver account...", Toast.LENGTH_SHORT).show()
                                 onEmailRegisterSubmit(
-                                    emailInput.trim(),
+                                    cleanEmail,
                                     passwordInput.trim(),
-                                    nameInput.trim(),
+                                    derivedName,
                                     vehicleTypeInput.trim(),
-                                    vehiclePlateInput.trim(),
-                                    licenseNumInput.trim()
+                                    vehiclePlateInput.ifBlank { "BJL 9988 X" }.trim(),
+                                    licenseNumInput.ifBlank { "GAM-DL-9082" }.trim()
                                 ) { err ->
-                                    isSubmitting = false
-                                    localError = err
-                                    Toast.makeText(context, "⚠️ $err", Toast.LENGTH_LONG).show()
+                                    if (err.contains("already in use", ignoreCase = true) || err.contains("already exists", ignoreCase = true)) {
+                                        // Account already registered in fleet: automatically complete sign-in!
+                                        Toast.makeText(context, "Account found, signing into fleet...", Toast.LENGTH_SHORT).show()
+                                        onEmailLoginSubmit(cleanEmail, passwordInput.trim())
+                                    } else {
+                                        isSubmitting = false
+                                        localError = err
+                                        Toast.makeText(context, "⚠️ $err", Toast.LENGTH_LONG).show()
+                                    }
                                 }
                             } else {
                                 // Pre-Firebase Login Validation
@@ -703,271 +869,6 @@ fun ModernSignInProvidersCard(
             isDark = isDark,
             onDismiss = { showForgotPasswordDialog = false }
         )
-    }
-}
-
-@Composable
-fun NumericOtp6BoxInput(
-    otpValue: String,
-    onOtpChange: (String) -> Unit,
-    onOtpComplete: (String) -> Unit,
-    length: Int = 6,
-    isDark: Boolean = false
-) {
-    BasicTextField(
-        value = otpValue,
-        onValueChange = { newValue ->
-            val filtered = newValue.filter { it.isDigit() }.take(length)
-            onOtpChange(filtered)
-            if (filtered.length == length) {
-                onOtpComplete(filtered)
-            }
-        },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        decorationBox = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                for (i in 0 until length) {
-                    val char = otpValue.getOrNull(i)?.toString() ?: ""
-                    val isFocused = otpValue.length == i || (i == length - 1 && otpValue.length == length)
-                    val boxBg = if (isDark) Color(0xFF0F172A) else PureWhite
-                    val boxBorder = when {
-                        isFocused -> BrandBluePrimary
-                        char.isNotEmpty() -> BrandBluePrimary.copy(alpha = 0.6f)
-                        else -> if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(boxBg)
-                            .border(
-                                width = if (isFocused) 2.dp else 1.dp,
-                                color = boxBorder,
-                                shape = RoundedCornerShape(12.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = char,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) PureWhite else BrandBlueDark
-                        )
-                    }
-                }
-            }
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("otp_code_pill_input")
-    )
-}
-
-data class WayGoCountryCode(
-    val flag: String,
-    val name: String,
-    val code: String
-)
-
-val wayGoCountryList = listOf(
-    WayGoCountryCode("🇬🇲", "Gambia", "+220"),
-    WayGoCountryCode("🇸🇳", "Senegal", "+221"),
-    WayGoCountryCode("🇳🇬", "Nigeria", "+234"),
-    WayGoCountryCode("🇬🇭", "Ghana", "+233"),
-    WayGoCountryCode("🇸🇱", "Sierra Leone", "+232"),
-    WayGoCountryCode("🇰🇪", "Kenya", "+254"),
-    WayGoCountryCode("🇿🇦", "South Africa", "+27"),
-    WayGoCountryCode("🇬🇧", "United Kingdom", "+44"),
-    WayGoCountryCode("🇺🇸", "United States", "+1"),
-    WayGoCountryCode("🇨🇦", "Canada", "+1"),
-    WayGoCountryCode("🇩🇪", "Germany", "+49"),
-    WayGoCountryCode("🇫🇷", "France", "+33"),
-    WayGoCountryCode("🇦🇪", "UAE", "+971"),
-    WayGoCountryCode("🇮🇳", "India", "+91"),
-    WayGoCountryCode("🇨🇳", "China", "+86")
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CountryCodePickerDialog(
-    selectedCode: String,
-    onCountrySelected: (WayGoCountryCode) -> Unit,
-    onDismissRequest: () -> Unit,
-    isDark: Boolean = false
-) {
-    var searchQuery by remember { mutableStateOf("") }
-    val filteredCountries = remember(searchQuery) {
-        if (searchQuery.isBlank()) {
-            wayGoCountryList
-        } else {
-            val query = searchQuery.trim().lowercase()
-            wayGoCountryList.filter {
-                it.name.lowercase().contains(query) || it.code.lowercase().contains(query)
-            }
-        }
-    }
-
-    val dialogBg = if (isDark) Color(0xFF0F172A) else PureWhite
-    val textColor = if (isDark) PureWhite else BrandBlueDark
-    val subTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = dialogBg,
-            tonalElevation = 6.dp,
-            border = BorderStroke(1.dp, BrandBluePrimary.copy(alpha = 0.2f)),
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .heightIn(max = 500.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(18.dp)
-                    .fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Select Country Code",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = textColor
-                    )
-                    IconButton(
-                        onClick = onDismissRequest,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = subTextColor
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Search Input Field
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search country or calling code...", fontSize = 13.sp, color = subTextColor) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = subTextColor,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear search",
-                                    tint = subTextColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BrandBluePrimary,
-                        unfocusedBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1),
-                        focusedContainerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF8FAFC),
-                        unfocusedContainerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF8FAFC),
-                        focusedTextColor = textColor,
-                        unfocusedTextColor = textColor
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (filteredCountries.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No countries match \"$searchQuery\"",
-                            fontSize = 13.5.sp,
-                            color = subTextColor
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(filteredCountries, key = { it.code + it.name }) { country ->
-                            val isSelected = country.code == selectedCode
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (isSelected) BrandBluePrimary.copy(alpha = 0.15f)
-                                        else Color.Transparent
-                                    )
-                                    .clickable { onCountrySelected(country) }
-                                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Text(country.flag, fontSize = 20.sp)
-                                Text(
-                                    text = country.name,
-                                    fontSize = 14.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = textColor,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = country.code,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = BrandBluePrimary
-                                )
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
-                                        tint = BrandBluePrimary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

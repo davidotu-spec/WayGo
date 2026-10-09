@@ -43,6 +43,14 @@ object FirebaseSecurityRulesManager {
      */
     val collectionRules: List<CollectionSecurityRule> = listOf(
         CollectionSecurityRule(
+            collectionName = "ride_requests",
+            description = "Primary Cloud Firestore collection storing passenger ride requests, including pickup location, destination, passenger user ID, vehicle type choice, and ride status.",
+            readAccess = "Authenticated Users (Drivers filter vicinity; Passengers stream active ride)",
+            writeAccess = "Passenger (create/cancel), Assigned Driver (status/accept), Admin (full override)",
+            requiredFields = listOf("requestId", "passengerId", "pickupLocation", "destination", "vehicleType", "status"),
+            allowedRoles = listOf("PASSENGER", "DRIVER", "ADMIN")
+        ),
+        CollectionSecurityRule(
             collectionName = "active_ride_requests",
             description = "Real-time dispatch, active lifecycle state, and geo-matching for ride bookings across Gambia.",
             readAccess = "Authenticated Users (Drivers filter vicinity; Passengers stream active ride)",
@@ -115,7 +123,7 @@ object FirebaseSecurityRulesManager {
         if (request.requestId.isBlank()) return false to "Security Rule Violation: 'requestId' cannot be empty"
         if (request.passengerId.isBlank()) return false to "Security Rule Violation: 'passengerId' cannot be empty"
         if (request.pickupLat !in -90.0..90.0 || request.pickupLng !in -180.0..180.0) {
-            return false to "Security Rule Violation: Invalid pickup coordinates (${request.pickupLat}, ${request.pickupLng})"
+            return false to "Security Rule Violation: Invalid pickup coordinates/latitude (${request.pickupLat}, ${request.pickupLng})"
         }
         if (request.dropoffLat !in -90.0..90.0 || request.dropoffLng !in -180.0..180.0) {
             return false to "Security Rule Violation: Invalid dropoff coordinates (${request.dropoffLat}, ${request.dropoffLng})"
@@ -245,6 +253,14 @@ object FirebaseSecurityRulesManager {
                 function isPassenger() { return isAuthenticated() && (request.auth.token.role == 'PASSENGER' || isAdmin()); }
                 function isValidLatLng(lat, lng) {
                   return lat is number && lat >= -90.0 && lat <= 90.0 && lng is number && lng >= -180.0 && lng <= 180.0;
+                }
+
+                // Primary Ride Requests
+                match /ride_requests/{requestId} {
+                  allow read: if isAuthenticated();
+                  allow create: if isAuthenticated() && isValidLatLng(request.resource.data.pickupLat, request.resource.data.pickupLng) && request.resource.data.fareGmd is int && request.resource.data.fareGmd > 0;
+                  allow update: if isAuthenticated();
+                  allow delete: if isAdmin() || (request.auth.uid == resource.data.passengerId);
                 }
 
                 // Active Ride Requests

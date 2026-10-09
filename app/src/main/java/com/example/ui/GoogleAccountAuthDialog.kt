@@ -83,12 +83,16 @@ fun GoogleAccountAuthDialog(
 
     Dialog(
         onDismissRequest = { if (!isLoading) safeDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight()
+                .imePadding()
                 .padding(16.dp)
                 .testTag("google_auth_dialog"),
             shape = RoundedCornerShape(26.dp),

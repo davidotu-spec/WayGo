@@ -58,6 +58,22 @@ abstract class WayGoDatabase : RoomDatabase() {
             }
         }
 
+        override fun onOpen(db: SupportSQLiteDatabase) {
+            super.onOpen(db)
+            INSTANCE?.let { database ->
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val drivers = database.dao().getAllDrivers()
+                        if (drivers.isEmpty()) {
+                            preseedData(database.dao())
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WayGoDatabase", "Driver check on open: ${e.localizedMessage}")
+                    }
+                }
+            }
+        }
+
         private suspend fun preseedData(dao: WayGoDao) {
             // Seed passenger profile
             dao.insertOrUpdateProfile(

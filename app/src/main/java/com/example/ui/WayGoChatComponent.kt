@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ChatMessage
 import com.example.ui.theme.*
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
 
 @Composable
@@ -71,9 +72,11 @@ fun WayGoChatDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(decorFitsSystemWindows = false),
         modifier = Modifier
             .fillMaxWidth()
-            .height(550.dp)
+            .heightIn(max = 550.dp)
+            .imePadding()
             .testTag("ride_chat_dialog"),
         shape = RoundedCornerShape(20.dp),
         containerColor = Color.White,
@@ -140,11 +143,35 @@ fun WayGoChatDialog(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = BrandBluePrimary, modifier = Modifier.size(24.dp))
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(BrandBluePrimary.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ChatBubbleOutline,
+                                        contentDescription = "No messages",
+                                        tint = BrandBluePrimary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Text(
-                                    "Establishing secured connection stream...",
+                                    "No messages yet",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandBlueDark
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "Send a message or tap one of the quick presets below.",
                                     fontSize = 11.sp,
                                     color = NeutralGray,
                                     textAlign = TextAlign.Center

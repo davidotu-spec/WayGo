@@ -22,10 +22,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.AccountVerificationDialog
-import com.example.ui.AdminScreen
 import com.example.ui.ProfileCompletionDialog
 import com.example.ui.WayGoViewModel
 import com.example.ui.WayGoViewModelFactory
+import com.example.ui.AuthenticationViewModel
+import com.example.ui.AuthenticationViewModelFactory
 import com.example.ui.DriverScreen
 import com.example.ui.PassengerScreen
 import com.example.ui.theme.*
@@ -68,12 +69,17 @@ class MainActivity : ComponentActivity() {
                 com.example.ui.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
             }
 
+            val authFactory = AuthenticationViewModelFactory(app.repository, sharedPrefs)
+            val authViewModel: AuthenticationViewModel = viewModel(factory = authFactory)
+
             MyApplicationTheme(darkTheme = isDarkTheme) {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .imePadding(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    WayGoMasterApp(viewModel)
+                    WayGoMasterApp(viewModel = viewModel, authViewModel = authViewModel)
                 }
             }
         }
@@ -93,7 +99,10 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WayGoMasterApp(viewModel: WayGoViewModel) {
+fun WayGoMasterApp(
+    viewModel: WayGoViewModel,
+    authViewModel: AuthenticationViewModel? = null
+) {
     val activeRole by viewModel.currentRole.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val activeNotif by viewModel.activePushNotification.collectAsState()
@@ -162,14 +171,17 @@ fun WayGoMasterApp(viewModel: WayGoViewModel) {
             when (activeRole) {
                 "PASSENGER" -> PassengerScreen(
                     viewModel = viewModel,
+                    authViewModel = authViewModel,
                     onOpenSectionSheet = { showSectionSelectorSheet = true }
                 )
                 "DRIVER" -> DriverScreen(
                     viewModel = viewModel,
+                    authViewModel = authViewModel,
                     onOpenSectionSheet = { showSectionSelectorSheet = true }
                 )
-                "ADMIN" -> AdminScreen(
+                else -> PassengerScreen(
                     viewModel = viewModel,
+                    authViewModel = authViewModel,
                     onOpenSectionSheet = { showSectionSelectorSheet = true }
                 )
             }
@@ -177,11 +189,8 @@ fun WayGoMasterApp(viewModel: WayGoViewModel) {
 
         // Modal Bottom Sheet to switch between distinct app sections
         if (showSectionSelectorSheet) {
-            val isAdminLoggedIn by viewModel.isAdminLoggedIn.collectAsState()
-            val isSecretAdminUnlocked by viewModel.isSecretAdminUnlocked.collectAsState()
             AppSectionSelectionSheet(
                 activeRole = activeRole,
-                isAdminLoggedIn = isAdminLoggedIn || isSecretAdminUnlocked,
                 onRoleSelected = { newRole ->
                     viewModel.setRole(newRole)
                 },
@@ -381,7 +390,6 @@ fun showAndroidSystemNotification(context: Context, title: String, message: Stri
 @Composable
 fun AppSectionSelectionSheet(
     activeRole: String,
-    isAdminLoggedIn: Boolean = false,
     onRoleSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -438,7 +446,7 @@ fun AppSectionSelectionSheet(
             // Section 1: Passenger
             SectionOptionCard(
                 title = "Passenger Section",
-                subtitle = "Book trips, track driver location & Flutterwave mobile payments",
+                subtitle = "Book trips, track driver location & secure digital payments",
                 icon = Icons.Default.DirectionsCar,
                 isSelected = activeRole == "PASSENGER",
                 onClick = {
@@ -462,23 +470,6 @@ fun AppSectionSelectionSheet(
                 },
                 modifier = Modifier.testTag("segment_driver")
             )
-
-            if (isAdminLoggedIn) {
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Section 3: Admin Panel (Only visible to signed-in Admin)
-                SectionOptionCard(
-                    title = "Admin Panel Section",
-                    subtitle = "System overview, driver onboarding approvals & trip analytics",
-                    icon = Icons.Default.AdminPanelSettings,
-                    isSelected = activeRole == "ADMIN",
-                    onClick = {
-                        onRoleSelected("ADMIN")
-                        onDismiss()
-                    },
-                    modifier = Modifier.testTag("segment_admin")
-                )
-            }
         }
     }
 }

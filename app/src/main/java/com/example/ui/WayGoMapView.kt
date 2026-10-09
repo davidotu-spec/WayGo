@@ -989,8 +989,8 @@ fun WayGoMapView(
                         }
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
-                            Text("Google Maps", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = BrandBlueDark)
-                            Text("${availableDrivers.size} drivers nearby", fontSize = 9.5.sp, color = SuccessGreen, fontWeight = FontWeight.Bold)
+                            Text("Google Maps SDK", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = BrandBlueDark)
+                            Text("${availableDrivers.size} live vehicles • Banjul & Kanifing", fontSize = 9.5.sp, color = SuccessGreen, fontWeight = FontWeight.Bold)
                         }
                     }
 

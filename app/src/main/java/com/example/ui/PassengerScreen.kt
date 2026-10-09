@@ -3,7 +3,6 @@ package com.example.ui
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import com.example.data.FlutterwaveManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import coil.compose.rememberAsyncImagePainter
@@ -49,9 +48,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.DriverEntity
+import com.example.data.RideLocation
 import com.example.data.TripEntity
 import com.example.data.TripFareEstimationService
 import com.example.data.UserProfileEntity
+import com.google.android.gms.maps.model.LatLng
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -113,11 +114,10 @@ fun resolveLocationForInput(input: String): GLocation {
 fun PassengerScreen(
     viewModel: WayGoViewModel,
     modifier: Modifier = Modifier,
+    authViewModel: AuthenticationViewModel? = null,
     onOpenSectionSheet: (() -> Unit)? = null
 ) {
     val isLoggedIn by viewModel.isUserLoggedIn.collectAsState()
-    val otpRequested by viewModel.otpRequested.collectAsState()
-    val generatedOtp by viewModel.generatedOtp.collectAsState()
     val authError by viewModel.authError.collectAsState()
 
     val profileFlow = viewModel.userProfile.collectAsState()
@@ -132,45 +132,42 @@ fun PassengerScreen(
             userEmail = profile?.email ?: "rider@waygo.gm",
             isDark = false,
             onDismiss = { showSignOutModal = false },
-            onConfirmSignOut = { viewModel.logout() }
+            onConfirmSignOut = {
+                viewModel.logout()
+                authViewModel?.logoutPassenger()
+            }
         )
     }
 
-    val smsGatewayStatus by viewModel.smsGatewayStatus.collectAsState()
-    val isRealSmsSent by viewModel.isRealSmsSent.collectAsState()
-    val isOtpSending by viewModel.isOtpSending.collectAsState()
     val isPassengerAuthenticating by viewModel.isPassengerAuthenticating.collectAsState()
-    val isAdminLoggedIn by viewModel.isAdminLoggedIn.collectAsState()
-    val isSecretAdminUnlocked by viewModel.isSecretAdminUnlocked.collectAsState()
 
     // Authentication Gate
     if (!isLoggedIn) {
-        val context = androidx.compose.ui.platform.LocalContext.current
-        val activity = context as? android.app.Activity
-        PassengerAuthView(
-            otpRequested = otpRequested,
-            generatedOtp = generatedOtp,
-            authError = authError,
-            isAuthenticating = isPassengerAuthenticating,
-            smsGatewayStatus = smsGatewayStatus,
-            isRealSmsSent = isRealSmsSent,
-            isOtpSending = isOtpSending,
-            onRequestOtp = { viewModel.requestOtp(activity, it) },
-            onRequestOtpWithProfile = { ph, nm -> viewModel.requestOtp(activity, ph, nm) },
-            onVerifyOtp = { viewModel.verifyOtp(it) },
-            onEmailLogin = { email, pass -> viewModel.loginPassengerWithEmail(email, pass) },
-            onEmailRegister = { email, pass, name, errCb ->
-                viewModel.registerPassengerWithEmail(email, pass, name, onSuccess = {}, onError = errCb)
-            },
-            onSocialLogin = { provider -> viewModel.socialLoginPassenger(provider) },
-            onGoogleAuth = { email, name, pass, isRegister, onError ->
-                viewModel.loginOrRegisterPassengerWithGoogle(email, name, pass, isRegister, onSuccess = {}, onError = onError)
-            },
-            onSelectRole = { newRole -> viewModel.setRole(newRole) },
-            isAdminLoggedIn = isAdminLoggedIn,
-            isSecretAdminUnlocked = isSecretAdminUnlocked,
-            onUnlockAdminPortal = { key -> viewModel.unlockAdminPortal(key) }
-        )
+        if (authViewModel != null) {
+            LoginScreen(
+                authViewModel = authViewModel,
+                initialRole = "PASSENGER",
+                onAuthSuccess = { role ->
+                    viewModel.onAuthenticationSuccess(role)
+                }
+            )
+        } else {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val activity = context as? android.app.Activity
+            PassengerAuthView(
+                authError = authError,
+                isAuthenticating = isPassengerAuthenticating,
+                onEmailLogin = { email, pass -> viewModel.loginPassengerWithEmail(email, pass) },
+                onEmailRegister = { email, pass, name, errCb ->
+                    viewModel.registerPassengerWithEmail(email, pass, name, onSuccess = { viewModel.onAuthenticationSuccess("PASSENGER") }, onError = errCb)
+                },
+                onSocialLogin = { provider -> viewModel.socialLoginPassenger(provider) },
+                onGoogleAuth = { email, name, pass, isRegister, onError ->
+                    viewModel.loginOrRegisterPassengerWithGoogle(email, name, pass, isRegister, onSuccess = { viewModel.onAuthenticationSuccess("PASSENGER") }, onError = onError)
+                },
+                onSelectRole = { newRole -> viewModel.setRole(newRole) }
+            )
+        }
         return
     }
 
@@ -403,21 +400,10 @@ fun AuthRoleSectionTabs(
     isSecretAdminUnlocked: Boolean = false,
     onLongPressHeader: (() -> Unit)? = null
 ) {
-    val isAdminPortalVisible = isAdminLoggedIn || isSecretAdminUnlocked || activeRole == "ADMIN"
-    val roles = remember(isAdminPortalVisible) {
-        if (isAdminPortalVisible) {
-            listOf(
-                Triple("PASSENGER", "Passenger", "🙋‍♂️"),
-                Triple("DRIVER", "Driver Fleet", "🚗"),
-                Triple("ADMIN", "Admin Portal", "🛡️")
-            )
-        } else {
-            listOf(
-                Triple("PASSENGER", "Passenger", "🙋‍♂️"),
-                Triple("DRIVER", "Driver Fleet", "🚗")
-            )
-        }
-    }
+    val roles = listOf(
+        Triple("PASSENGER", "Passenger", "🙋‍♂️"),
+        Triple("DRIVER", "Driver Fleet", "🚗")
+    )
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -437,13 +423,7 @@ fun AuthRoleSectionTabs(
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isDarkBg) PureWhite.copy(alpha = 0.8f) else NeutralGray,
-                modifier = Modifier
-                    .padding(start = 4.dp, bottom = 4.dp)
-                    .then(
-                        if (onLongPressHeader != null) {
-                            Modifier.clickable { onLongPressHeader() }
-                        } else Modifier
-                    )
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
             )
 
             Row(
@@ -490,28 +470,14 @@ fun AuthRoleSectionTabs(
 
 @Composable
 fun PassengerAuthView(
-    otpRequested: Boolean = false,
-    generatedOtp: String = "",
     authError: String = "",
     isAuthenticating: Boolean = false,
-    smsGatewayStatus: String = "",
-    isRealSmsSent: Boolean = false,
-    isOtpSending: Boolean = false,
-    onRequestOtp: (String) -> Unit = {},
-    onRequestOtpWithProfile: (String, String) -> Unit = { p, _ -> onRequestOtp(p) },
-    onVerifyOtp: (String) -> Unit = {},
     onEmailLogin: (String, String) -> Unit = { _, _ -> },
     onEmailRegister: (String, String, String, (String) -> Unit) -> Unit = { _, _, _, _ -> },
     onSocialLogin: (String) -> Unit = {},
     onGoogleAuth: (email: String, name: String, pass: String, isRegister: Boolean, onError: (String) -> Unit) -> Unit = { _, _, _, _, _ -> },
-    onSelectRole: (String) -> Unit = {},
-    isAdminLoggedIn: Boolean = false,
-    isSecretAdminUnlocked: Boolean = false,
-    onUnlockAdminPortal: (String) -> Boolean = { false }
+    onSelectRole: (String) -> Unit = {}
 ) {
-    var showSecretAdminDialog by remember { mutableStateOf(false) }
-    var secretPasskeyInput by remember { mutableStateOf("") }
-    var secretPasskeyError by remember { mutableStateOf("") }
     var showGoogleAuthDialog by remember { mutableStateOf(false) }
 
     if (showGoogleAuthDialog) {
@@ -557,97 +523,8 @@ fun PassengerAuthView(
             },
             onEmailLoginSubmit = { em, pw -> onEmailLogin(em, pw) },
             onEmailRegisterSubmit = { em, pw, nm, _, _, _, errCb -> onEmailRegister(em, pw, nm, errCb) },
-            onRequestOtp = { ph -> onRequestOtp(ph) },
-            onRequestOtpWithProfile = { ph, nm -> onRequestOtpWithProfile(ph, nm) },
-            onVerifyOtp = { code -> onVerifyOtp(code) },
-            otpRequested = otpRequested,
-            isOtpSending = isOtpSending,
-            generatedOtp = generatedOtp,
-            smsGatewayStatus = smsGatewayStatus,
-            authError = authError,
-            isAdminLoggedIn = isAdminLoggedIn,
-            isSecretAdminUnlocked = isSecretAdminUnlocked,
-            onLongPressHeader = { showSecretAdminDialog = true }
+            authError = authError
         )
-
-        // Hidden Administrative Passcode Unlock Dialog
-        if (showSecretAdminDialog) {
-            AlertDialog(
-                onDismissRequest = {
-                    showSecretAdminDialog = false
-                    secretPasskeyError = ""
-                },
-                icon = {
-                    Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = BrandBluePrimary, modifier = Modifier.size(32.dp))
-                },
-                title = {
-                    Text("Administrative Access Gate", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = BrandBlueDark)
-                },
-                text = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Enter corporate administrator passkey to reveal the Admin Portal tab in portal selection.",
-                            fontSize = 12.5.sp,
-                            color = NeutralGray
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = secretPasskeyInput,
-                            onValueChange = {
-                                secretPasskeyInput = it
-                                secretPasskeyError = ""
-                            },
-                            label = { Text("Secret Passkey / Master Key") },
-                            placeholder = { Text("e.g. WAYGO-ADMIN-SECRET-2026") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            visualTransformation = PasswordVisualTransformation(),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("secret_admin_passkey_input"),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = BrandBluePrimary,
-                                unfocusedBorderColor = NeutralGray.copy(alpha = 0.4f)
-                            )
-                        )
-                        if (secretPasskeyError.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(secretPasskeyError, color = ErrorRed, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            val success = onUnlockAdminPortal(secretPasskeyInput)
-                            if (success) {
-                                showSecretAdminDialog = false
-                                secretPasskeyInput = ""
-                                secretPasskeyError = ""
-                                onSelectRole("ADMIN")
-                            } else {
-                                secretPasskeyError = "Invalid admin secret key. Access denied."
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandBluePrimary),
-                        modifier = Modifier.testTag("secret_admin_passkey_submit")
-                    ) {
-                        Text("Unlock & Access Admin", fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showSecretAdminDialog = false
-                            secretPasskeyInput = ""
-                            secretPasskeyError = ""
-                        }
-                    ) {
-                        Text("Cancel", color = NeutralGray)
-                    }
-                }
-            )
-        }
     }
 }
 
@@ -695,20 +572,16 @@ fun HomeScreenContent(
 
     val simLat by viewModel.simulatedDriverLat.collectAsState()
     val simLng by viewModel.simulatedDriverLng.collectAsState()
+    val firestoreRideRequestStatus by viewModel.firestoreRideRequestStatus.collectAsState()
+    var isBookingSaving by remember { mutableStateOf(false) }
 
     var pickupName by remember { mutableStateOf("") }
     var dropoffName by remember { mutableStateOf("") }
     var selectVehicleType by remember { mutableStateOf("CAR") } // "CAR", "TRICYCLE"
-    var selectPaymentMethod by remember { mutableStateOf("CASH") } // "CASH", "WAVE", "AFRICELL", "QCELL"
-
-    // Flutterwave State Hookups
-    val coroutineScope = rememberCoroutineScope()
-    var isProcessingFlutterwave by remember { mutableStateOf(false) }
-    var isFlutterwaveInitiating by remember { mutableStateOf(false) }
-    var flutterwaveStatusMsg by remember { mutableStateOf("") }
-    var flutterwaveUrl by remember { mutableStateOf<String?>(null) }
+    var selectPaymentMethod by remember { mutableStateOf("CASH") } // "CASH", "WAVE", "AFRICELL", "STRIPE"
 
     // Stripe State Hookups
+    val coroutineScope = rememberCoroutineScope()
     var isProcessingStripe by remember { mutableStateOf(false) }
     var isStripeInitiating by remember { mutableStateOf(false) }
     var stripeStatusMsg by remember { mutableStateOf("") }
@@ -749,6 +622,7 @@ fun HomeScreenContent(
     var dCoordinates by remember { mutableStateOf<GLocation?>(null) }
     var mapPickingMode by remember { mutableStateOf<String?>(null) }
     var dynamicCalculatedFare by remember { mutableStateOf(150) }
+    var useGoogleMapsSdk by remember { mutableStateOf(false) }
 
     var ratingScore by remember { mutableIntStateOf(5) }
     var ratingComment by remember { mutableStateOf("") }
@@ -826,52 +700,211 @@ fun HomeScreenContent(
     ) {
         // Map Display
         item {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                WayGoMapView(
-                    drivers = drivers,
-                    activeTrip = activeTrip,
-                    simulatedDriverLat = simLat,
-                    simulatedDriverLng = simLng,
-                    passengerLat = pCoordinates?.lat ?: 13.4471,
-                    passengerLng = pCoordinates?.lng ?: -16.6791,
-                    pickupLocationName = pickupName,
-                    pickupLat = pCoordinates?.lat,
-                    pickupLng = pCoordinates?.lng,
-                    dropoffLocationName = dropoffName,
-                    dropoffLat = dCoordinates?.lat,
-                    dropoffLng = dCoordinates?.lng,
-                    mapPickingMode = mapPickingMode,
-                    onSetPickupLocation = { name, lat, lng ->
-                        pickupName = name
-                        pCoordinates = GLocation(name, lat, lng)
-                        mapPickingMode = null
-                    },
-                    onSetDropoffLocation = { name, lat, lng ->
-                        dropoffName = name
-                        dCoordinates = GLocation(name, lat, lng)
-                        mapPickingMode = null
-                    },
-                    onCancelMapPicking = { mapPickingMode = null },
-                    progress = progress,
-                    onSelectDriver = { selectedDriver ->
-                        selectVehicleType = selectedDriver.vehicleType
-                        selectedDriverForProfile = selectedDriver
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("map_container_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = PureWhite),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    // Map Engine Switcher Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (useGoogleMapsSdk) Icons.Default.Place else Icons.Default.Map,
+                                contentDescription = null,
+                                tint = if (useGoogleMapsSdk) ErrorRed else BrandBluePrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = if (useGoogleMapsSdk) "Google Maps SDK" else "WayGo City Map",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.5.sp,
+                                color = BrandBlueDark
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(
+                                selected = !useGoogleMapsSdk,
+                                onClick = { useGoogleMapsSdk = false },
+                                label = { Text("Vector", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                                modifier = Modifier.testTag("toggle_vector_map_chip")
+                            )
+                            FilterChip(
+                                selected = useGoogleMapsSdk,
+                                onClick = { useGoogleMapsSdk = true },
+                                label = { Text("Google Maps", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                modifier = Modifier.testTag("toggle_google_maps_chip")
+                            )
+                        }
                     }
-                )
-                
-                SosEmergencyButton(
-                    pLat = pCoordinates?.lat ?: 13.4471,
-                    pLng = pCoordinates?.lng ?: -16.6791,
-                    activeTripId = activeTrip?.id,
-                    modifier = Modifier
-                        .zIndex(12f)
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 12.dp, bottom = 12.dp)
-                )
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (useGoogleMapsSdk) {
+                            val currentPickup = remember(pickupName, pCoordinates) {
+                                RideLocation(
+                                    name = pickupName.ifBlank { "Pickup Point" },
+                                    address = pickupName,
+                                    latitude = pCoordinates?.lat ?: 13.4471,
+                                    longitude = pCoordinates?.lng ?: -16.6791
+                                )
+                            }
+                            val currentDropoff = remember(dropoffName, dCoordinates) {
+                                RideLocation(
+                                    name = dropoffName.ifBlank { "Dropoff Destination" },
+                                    address = dropoffName,
+                                    latitude = dCoordinates?.lat ?: 13.4533,
+                                    longitude = dCoordinates?.lng ?: -16.5746
+                                )
+                            }
+                            val driverCoord = remember(simLat, simLng) {
+                                if (simLat != null && simLng != null) LatLng(simLat, simLng) else null
+                            }
+                            GoogleMapsRideSelector(
+                                pickupLocation = currentPickup,
+                                destinationLocation = currentDropoff,
+                                onPickupChanged = { loc ->
+                                    pickupName = loc.name
+                                    pCoordinates = GLocation(loc.name, loc.latitude, loc.longitude)
+                                },
+                                onDestinationChanged = { loc ->
+                                    dropoffName = loc.name
+                                    dCoordinates = GLocation(loc.name, loc.latitude, loc.longitude)
+                                },
+                                driverLatLng = driverCoord,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(340.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            )
+                        } else {
+                            WayGoMapView(
+                                drivers = drivers,
+                                activeTrip = activeTrip,
+                                simulatedDriverLat = simLat,
+                                simulatedDriverLng = simLng,
+                                passengerLat = pCoordinates?.lat ?: 13.4471,
+                                passengerLng = pCoordinates?.lng ?: -16.6791,
+                                pickupLocationName = pickupName,
+                                pickupLat = pCoordinates?.lat,
+                                pickupLng = pCoordinates?.lng,
+                                dropoffLocationName = dropoffName,
+                                dropoffLat = dCoordinates?.lat,
+                                dropoffLng = dCoordinates?.lng,
+                                mapPickingMode = mapPickingMode,
+                                onSetPickupLocation = { name, lat, lng ->
+                                    pickupName = name
+                                    pCoordinates = GLocation(name, lat, lng)
+                                    mapPickingMode = null
+                                },
+                                onSetDropoffLocation = { name, lat, lng ->
+                                    dropoffName = name
+                                    dCoordinates = GLocation(name, lat, lng)
+                                    mapPickingMode = null
+                                },
+                                onCancelMapPicking = { mapPickingMode = null },
+                                progress = progress,
+                                onSelectDriver = { selectedDriver ->
+                                    selectVehicleType = selectedDriver.vehicleType
+                                    selectedDriverForProfile = selectedDriver
+                                }
+                            )
+                        }
+
+                        SosEmergencyButton(
+                            pLat = pCoordinates?.lat ?: 13.4471,
+                            pLng = pCoordinates?.lng ?: -16.6791,
+                            activeTripId = activeTrip?.id,
+                            modifier = Modifier
+                                .zIndex(12f)
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 12.dp, bottom = 12.dp)
+                        )
+                    }
+                }
             }
         }
 
         if (activeTrip == null) {
+            // UI FORM TO COLLECT RIDE DETAILS & SAVE TO FIRESTORE 'ride_requests' COLLECTION
+            item {
+                val formPickupLoc = remember(pickupName, pCoordinates) {
+                    RideLocation(
+                        name = pickupName.ifBlank { "Kairaba Avenue" },
+                        address = pickupName.ifBlank { "Kairaba Avenue, Serrekunda" },
+                        latitude = pCoordinates?.lat ?: 13.4471,
+                        longitude = pCoordinates?.lng ?: -16.6791
+                    )
+                }
+                val formDropoffLoc = remember(dropoffName, dCoordinates) {
+                    RideLocation(
+                        name = dropoffName.ifBlank { "Albert Market" },
+                        address = dropoffName.ifBlank { "Albert Market, Banjul" },
+                        latitude = dCoordinates?.lat ?: 13.4533,
+                        longitude = dCoordinates?.lng ?: -16.5746
+                    )
+                }
+
+                RideRequestForm(
+                    pickupLocation = formPickupLoc,
+                    destinationLocation = formDropoffLoc,
+                    selectedVehicleType = selectVehicleType,
+                    onPickupChanged = { loc ->
+                        pickupName = loc.name
+                        pCoordinates = GLocation(loc.name, loc.latitude, loc.longitude)
+                    },
+                    onDestinationChanged = { loc ->
+                        dropoffName = loc.name
+                        dCoordinates = GLocation(loc.name, loc.latitude, loc.longitude)
+                    },
+                    onVehicleTypeChanged = { type ->
+                        selectVehicleType = type
+                    },
+                    passengerId = profile?.email?.ifBlank { null } ?: profile?.id ?: "usr_passenger",
+                    passengerName = profile?.name ?: "John Doe",
+                    passengerPhone = profile?.phone ?: "+220 7000000",
+                    isSaving = isBookingSaving,
+                    firestoreStatusMessage = firestoreRideRequestStatus,
+                    onUseCurrentLocation = {
+                        locationHelper.requestPermissionAndLocation()
+                        val state = locationHelper.state.value
+                        val name = state.locationName.ifBlank { "Current Location" }
+                        pickupName = name
+                        pCoordinates = GLocation(name, state.latitude, state.longitude)
+                    },
+                    onOpenMapPicker = { mode ->
+                        useGoogleMapsSdk = true
+                        mapPickingMode = if (mode == MapTargetMode.PICKUP) "PICKUP" else "DROPOFF"
+                    },
+                    initialPaymentMethod = selectPaymentMethod,
+                    onSubmitRideRequest = { formData ->
+                        isBookingSaving = true
+                        viewModel.saveRideDetailsToFirestore(
+                            pickupLocation = formData.pickupLocation,
+                            destinationLocation = formData.destinationLocation,
+                            vehicleType = formData.vehicleType,
+                            paymentMethod = formData.paymentMethod,
+                            fareGmd = formData.fareGmd,
+                            preferences = formData.preferences
+                        ) { _, _ ->
+                            isBookingSaving = false
+                        }
+                    }
+                )
+            }
+
             // RIDE REQUEST CREATION PANEL
             item {
                 Card(
@@ -1747,7 +1780,7 @@ fun HomeScreenContent(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            listOf("CASH", "WAVE", "FLUTTERWAVE", "STRIPE").forEach { method ->
+                            listOf("CASH", "WAVE", "STRIPE").forEach { method ->
                                 Card(
                                     onClick = { selectPaymentMethod = method },
                                     modifier = Modifier.weight(1f),
@@ -2052,14 +2085,14 @@ fun HomeScreenContent(
                         // Submit Button
                         Button(
                             onClick = {
-                                if (selectPaymentMethod == "FLUTTERWAVE") {
+                                if (selectPaymentMethod == "STRIPE") {
                                     if (profile?.isPaymentLinked == true) {
                                         // 1-Click Cashless Booking! Bypass WebView secure payment gateway check.
                                         viewModel.initiateBooking(
                                             pickupName = pickupName,
                                             dropoffName = dropoffName,
                                             vehicleType = selectVehicleType,
-                                            paymentMethod = "FLUTTERWAVE (LINKED)",
+                                            paymentMethod = "STRIPE (LINKED)",
                                             fare = dynamicCalculatedFare,
                                             preferences = selectedPreferences,
                                             pLat = pCoordinates?.lat ?: 13.4471,
@@ -2068,50 +2101,27 @@ fun HomeScreenContent(
                                             dLng = dCoordinates?.lng ?: -16.5746
                                         )
                                     } else {
-                                        isFlutterwaveInitiating = true
-                                        isProcessingFlutterwave = true
-                                        flutterwaveStatusMsg = "Preparing secure payment gateway..."
+                                        isStripeInitiating = true
+                                        isProcessingStripe = true
+                                        stripeStatusMsg = "Preparing secure Stripe gateway..."
                                         coroutineScope.launch {
                                             val pEmail = profile?.email ?: "johndoe@example.com"
                                             val pName = profile?.name ?: "John Doe"
                                             val pPhone = profile?.phone ?: "+220 771 2345"
-                                            val txRef = "flw_ref_" + System.currentTimeMillis().toString().takeLast(6)
-                                            val link = com.example.data.FlutterwaveManager.initiatePayment(
+                                            val txRef = "st_ref_" + System.currentTimeMillis().toString().takeLast(6)
+                                            val link = com.example.data.StripeManager.initiateStripePayment(
                                                 amountGmd = dynamicCalculatedFare.toDouble(),
                                                 passengerEmail = pEmail,
                                                 passengerName = pName,
                                                 passengerPhone = pPhone,
                                                 tripTxRef = txRef
                                             )
-                                            isFlutterwaveInitiating = false
+                                            isStripeInitiating = false
                                             if (link != null) {
-                                                flutterwaveUrl = link
+                                                stripeUrl = link
                                             } else {
-                                                flutterwaveStatusMsg = "Error initiating Flutterwave payments. Please try again."
+                                                stripeStatusMsg = "Error initiating Stripe payments. Please try again."
                                             }
-                                        }
-                                    }
-                                } else if (selectPaymentMethod == "STRIPE") {
-                                    isStripeInitiating = true
-                                    isProcessingStripe = true
-                                    stripeStatusMsg = "Preparing secure Stripe gateway..."
-                                    coroutineScope.launch {
-                                        val pEmail = profile?.email ?: "johndoe@example.com"
-                                        val pName = profile?.name ?: "John Doe"
-                                        val pPhone = profile?.phone ?: "+220 771 2345"
-                                        val txRef = "st_ref_" + System.currentTimeMillis().toString().takeLast(6)
-                                        val link = com.example.data.StripeManager.initiateStripePayment(
-                                            amountGmd = dynamicCalculatedFare.toDouble(),
-                                            passengerEmail = pEmail,
-                                            passengerName = pName,
-                                            passengerPhone = pPhone,
-                                            tripTxRef = txRef
-                                        )
-                                        isStripeInitiating = false
-                                        if (link != null) {
-                                            stripeUrl = link
-                                        } else {
-                                            stripeStatusMsg = "Error initiating Stripe payments. Please try again."
                                         }
                                     }
                                 } else {
@@ -2306,81 +2316,6 @@ fun HomeScreenContent(
                                     }
                                 }
                             )
-                        }
-
-                        // Flutterwave Secure Payment Processing States
-                        if (isProcessingFlutterwave) {
-                            if (isFlutterwaveInitiating) {
-                                AlertDialog(
-                                    onDismissRequest = { 
-                                        isProcessingFlutterwave = false 
-                                        isFlutterwaveInitiating = false
-                                    },
-                                    title = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(24.dp),
-                                                color = BrandBluePrimary,
-                                                strokeWidth = 2.dp
-                                            )
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                            Text("Flutterwave Secure", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BrandBlueDark)
-                                        }
-                                    },
-                                    text = {
-                                        Text(
-                                            text = flutterwaveStatusMsg,
-                                            fontSize = 13.sp,
-                                            color = BrandBlueDark
-                                        )
-                                    },
-                                    confirmButton = {
-                                        TextButton(onClick = {
-                                            isProcessingFlutterwave = false
-                                            isFlutterwaveInitiating = false
-                                        }) {
-                                            Text("Cancel", color = NeutralGray)
-                                        }
-                                    }
-                                )
-                            } else if (flutterwaveUrl != null) {
-                                FlutterwaveCheckoutDialog(
-                                    checkoutUrl = flutterwaveUrl!!,
-                                    onPaymentSuccess = { txRef, transactionId ->
-                                        // Save standard details
-                                        viewModel.initiateBooking(
-                                            pickupName = pickupName,
-                                            dropoffName = dropoffName,
-                                            vehicleType = selectVehicleType,
-                                            paymentMethod = "FLUTTERWAVE (PAID)",
-                                            fare = dynamicCalculatedFare,
-                                            pLat = pCoordinates?.lat ?: 13.4471,
-                                            pLng = pCoordinates?.lng ?: -16.6791,
-                                            dLat = dCoordinates?.lat ?: 13.4533,
-                                            dLng = dCoordinates?.lng ?: -16.5746
-                                        )
-                                        // Reset states
-                                        flutterwaveUrl = null
-                                        isProcessingFlutterwave = false
-                                    },
-                                    onCancel = {
-                                        flutterwaveUrl = null
-                                        isProcessingFlutterwave = false
-                                    }
-                                )
-                            } else {
-                                // Error layout or retry message
-                                AlertDialog(
-                                    onDismissRequest = { isProcessingFlutterwave = false },
-                                    title = { Text("Payment Blocked", fontWeight = FontWeight.Bold, color = ErrorRed) },
-                                    text = { Text(flutterwaveStatusMsg) },
-                                    confirmButton = {
-                                        TextButton(onClick = { isProcessingFlutterwave = false }) {
-                                            Text("Go Back")
-                                        }
-                                    }
-                                )
-                            }
                         }
 
                         // Stripe Secure Payment Processing States
@@ -2840,18 +2775,20 @@ fun HomeScreenContent(
                                             )
                                         }
 
-                                        if (showChatDialog) {
-                                            WayGoChatDialog(
-                                                tripId = activeTrip!!.id,
-                                                currentRole = "PASSENGER",
-                                                currentUserId = "current_passenger",
-                                                currentUserName = profile?.name ?: "Fatou Joof",
-                                                viewModel = viewModel,
-                                                onDismiss = { 
-                                                    showChatDialog = false 
-                                                    viewModel.endChatSession()
-                                                }
-                                            )
+                                        activeTrip?.let { currentTrip ->
+                                            if (showChatDialog) {
+                                                WayGoChatDialog(
+                                                    tripId = currentTrip.id,
+                                                    currentRole = "PASSENGER",
+                                                    currentUserId = "current_passenger",
+                                                    currentUserName = profile?.name ?: "Fatou Joof",
+                                                    viewModel = viewModel,
+                                                    onDismiss = { 
+                                                        showChatDialog = false 
+                                                        viewModel.endChatSession()
+                                                    }
+                                                )
+                                            }
                                         }
 
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -3829,7 +3766,6 @@ fun ProfileScreenContent(
     val coroutineScope = rememberCoroutineScope()
     val trips by viewModel.allTrips.collectAsState()
     val pastRides by viewModel.allPastRides.collectAsState()
-    val isAdminLoggedIn by viewModel.isAdminLoggedIn.collectAsState()
     
     // Active Account Tab state: "PROFILE", "TRIP_LOG", "INBOX", "PAYMENT", "SAFETY", "SAVED_PLACES", "SETTINGS"
     var activeAccountTab by remember(initialSection) { mutableStateOf(initialSection) }
@@ -3885,7 +3821,7 @@ fun ProfileScreenContent(
             listOf(
                 AccountInboxItem("1", "Welcome to WayGo Gambia", "Your account is active. Book rides seamlessly across Banjul, Serrekunda & Brikama.", "10 mins ago", "SYSTEM", false),
                 AccountInboxItem("2", "15% Off SeneGambia Weekend Ride", "Use promo code WAYGO15 on your next coastal ride. Offer expires Sunday midnight!", "2 hours ago", "PROMO", false),
-                AccountInboxItem("3", "Flutterwave Payment Secured", "Visa, MasterCard & Wave mobile money payments are fully enabled.", "1 day ago", "PAYMENT", true),
+                AccountInboxItem("3", "Digital Payment Secured", "Visa, MasterCard & Wave mobile money payments are fully enabled.", "1 day ago", "PAYMENT", true),
                 AccountInboxItem("4", "Safety Verification Update", "All drivers on WayGo undergo physical Gambia Police background checks.", "3 days ago", "SAFETY", true)
             )
         )
@@ -4380,56 +4316,6 @@ fun ProfileScreenContent(
                         }
                     }
                 }
-
-                if (isAdminLoggedIn) {
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // 3. ADMIN PANEL ROW
-                    Surface(
-                        onClick = { viewModel.setRole("ADMIN") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(BrandBluePrimary.copy(alpha = 0.12f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin Console", tint = BrandBluePrimary, modifier = Modifier.size(20.dp))
-                                }
-                                Column {
-                                    Text("Admin Panel", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                                    Text("Verify drivers, dispatch & support metrics", fontSize = 11.5.sp, color = NeutralGray)
-                                }
-                            }
-                            OutlinedButton(
-                                onClick = { viewModel.setRole("ADMIN") },
-                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBluePrimary),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.height(34.dp)
-                            ) {
-                                Text("Open", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandBluePrimary)
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -4446,16 +4332,13 @@ fun ProfileScreenContent(
 
         val unreadInboxCount = inboxMessages.count { !it.isRead }
 
-        val accountSections = remember(unreadInboxCount, trips.size, pastRides.size, profile?.isPaymentLinked, isAdminLoggedIn) {
+        val accountSections = remember(unreadInboxCount, trips.size, pastRides.size, profile?.isPaymentLinked) {
             buildList {
                 add(AccountSectionItem("PROFILE", "Profile", Icons.Default.Person, null))
                 add(AccountSectionItem("PAST_RIDES", "Ride History (Room)", Icons.Default.DirectionsCar, pastRides.size.takeIf { it > 0 }?.toString()))
                 add(AccountSectionItem("TRIP_LOG", "Trip Log", Icons.Default.History, trips.size.takeIf { it > 0 }?.toString()))
                 add(AccountSectionItem("INBOX", "Inbox", Icons.Default.Inbox, unreadInboxCount.takeIf { it > 0 }?.toString()))
                 add(AccountSectionItem("DRIVER_HUB", "Driver Hub", Icons.Default.TwoWheeler, "DRIVER"))
-                if (isAdminLoggedIn) {
-                    add(AccountSectionItem("ADMIN_PANEL", "Admin Console", Icons.Default.AdminPanelSettings, "ADMIN"))
-                }
                 add(AccountSectionItem("PAYMENT", "Payment", Icons.Default.AccountBalanceWallet, if (profile?.isPaymentLinked == true) "Card" else null))
                 add(AccountSectionItem("SAFETY", "Support & Safety", Icons.Default.Shield, null))
                 add(AccountSectionItem("SAVED_PLACES", "Saved Places", Icons.Default.Bookmark, null))
@@ -4474,8 +4357,6 @@ fun ProfileScreenContent(
                     onClick = {
                         if (section.id == "DRIVER_HUB") {
                             viewModel.setRole("DRIVER")
-                        } else if (section.id == "ADMIN_PANEL") {
-                            viewModel.setRole("ADMIN")
                         } else {
                             activeAccountTab = section.id
                         }
@@ -5295,7 +5176,7 @@ fun ProfileScreenContent(
                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Cashless checkout is active. Flutterwave will charge automatically.",
+                                    text = "Cashless checkout is active. Stripe will charge automatically.",
                                     fontSize = 11.sp,
                                     color = SuccessGreen,
                                     fontWeight = FontWeight.Medium
@@ -5325,13 +5206,13 @@ fun ProfileScreenContent(
                             Button(
                                 onClick = {
                                     isLinkingCardProcessing = true
-                                    linkingStatusMsg = "Opening secure Flutterwave gateway..."
+                                    linkingStatusMsg = "Opening secure Stripe gateway..."
                                     coroutineScope.launch {
                                         val pEmail = editEmail.ifBlank { "johndoe@example.com" }
                                         val pName = editName.ifBlank { "John Doe" }
                                         val pPhone = editPhone.ifBlank { "+220 771 2345" }
-                                        val txRef = "flw_link_" + System.currentTimeMillis().toString().takeLast(6)
-                                        val link = com.example.data.FlutterwaveManager.initiatePayment(
+                                        val txRef = "st_link_" + System.currentTimeMillis().toString().takeLast(6)
+                                        val link = com.example.data.StripeManager.initiateStripePayment(
                                             amountGmd = 25.0,
                                             passengerEmail = pEmail,
                                             passengerName = pName,
@@ -5341,7 +5222,7 @@ fun ProfileScreenContent(
                                         if (link != null) {
                                             linkingCardUrl = link
                                         } else {
-                                            linkingStatusMsg = "Failed to connect to Flutterwave."
+                                            linkingStatusMsg = "Failed to connect to Stripe gateway."
                                         }
                                     }
                                 },
@@ -5351,7 +5232,7 @@ fun ProfileScreenContent(
                             ) {
                                 Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Link Card with Flutterwave", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("Link Card with Stripe", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                         }
 
@@ -5919,35 +5800,6 @@ fun ProfileScreenContent(
 
                         HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
 
-                        if (!isAdminLoggedIn) {
-                            Text("Staff & Admin Portal", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = BrandBlueDark)
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f))
-                                    .clickable { viewModel.setRole("ADMIN") }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Icon(Icons.Default.Lock, contentDescription = "Staff", tint = NeutralGray, modifier = Modifier.size(18.dp))
-                                    Column {
-                                        Text("Administrator Console Sign In", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                                        Text("Access operations, verification & dispatch logs", fontSize = 11.sp, color = NeutralGray)
-                                    }
-                                }
-                                Icon(Icons.Default.ChevronRight, contentDescription = "Go", tint = NeutralGray, modifier = Modifier.size(18.dp))
-                            }
-
-                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
-                        }
-
                         OutlinedButton(
                             onClick = onSignOutClick,
                             modifier = Modifier
@@ -6036,7 +5888,7 @@ fun ProfileScreenContent(
 
     // CUSTOM CARD LINKING CHECKOUT DIALOG
     if (linkingCardUrl != null) {
-        FlutterwaveCheckoutDialog(
+        StripeCheckoutDialog(
             checkoutUrl = linkingCardUrl!!,
             onPaymentSuccess = { txRef, transactionId ->
                 viewModel.linkPaymentMethod(
@@ -6060,11 +5912,11 @@ fun ProfileScreenContent(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        color = BrandBluePrimary,
+                        color = Color(0xFF635BFF),
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text("Flutterwave Secure", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BrandBlueDark)
+                    Text("Stripe Secure", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BrandBlueDark)
                 }
             },
             text = {
@@ -6343,150 +6195,6 @@ fun SupportInboxContent(viewModel: WayGoViewModel) {
                 modifier = Modifier.background(BrandBluePrimary, CircleShape)
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.White)
-            }
-        }
-    }
-}
-
-@Composable
-fun FlutterwaveCheckoutDialog(
-    checkoutUrl: String,
-    onPaymentSuccess: (txRef: String, transactionId: String) -> Unit,
-    onCancel: () -> Unit
-) {
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = { onCancel() },
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
-        )
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White),
-            color = Color.White
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Top Custom Header for Secure Payment
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(BrandBlueDark)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onCancel) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close Checkout",
-                            tint = Color.White
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Flutterwave Secure Checkout",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Secure",
-                                tint = SuccessGreen,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "256-bit SSL Encrypted Connection",
-                                color = SuccessGreen,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                    // Tiny brand logo text
-                    Text(
-                        text = "flutterwave",
-                        color = AccentAmber,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 14.sp,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                    )
-                }
-
-                var progress by remember { mutableStateOf(0.1f) }
-                if (progress < 1.0f) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = BrandBluePrimary,
-                        trackColor = BrandBlueLight
-                    )
-                }
-
-                // Android WebView for secure hosting checkout
-                androidx.compose.ui.viewinterop.AndroidView(
-                    factory = { context ->
-                        WebView(context).apply {
-                            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                            settings.apply {
-                                javaScriptEnabled = true
-                                domStorageEnabled = true
-                                useWideViewPort = true
-                                loadWithOverviewMode = true
-                                setSupportZoom(true)
-                            }
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                                    super.onPageStarted(view, url, favicon)
-                                    progress = 0.3f
-                                }
-
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
-                                    progress = 1.0f
-                                    
-                                    // Handle success redirect checking
-                                    if (url != null && url.contains("standard-checkout-redirect.waygo.com")) {
-                                        val uri = android.net.Uri.parse(url)
-                                        val status = uri.getQueryParameter("status")
-                                        val txRef = uri.getQueryParameter("tx_ref") ?: "flw_tx_ref_" + System.currentTimeMillis()
-                                        val transactionId = uri.getQueryParameter("transaction_id") ?: "12345"
-
-                                        if (status == "successful" || status == "completed" || url.contains("status=successful")) {
-                                            onPaymentSuccess(txRef, transactionId)
-                                        } else {
-                                            onPaymentSuccess(txRef, transactionId)
-                                        }
-                                    }
-                                }
-
-                                override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
-                                    val url = request?.url?.toString() ?: ""
-                                    if (url.contains("standard-checkout-redirect.waygo.com")) {
-                                        val uri = android.net.Uri.parse(url)
-                                        val status = uri.getQueryParameter("status")
-                                        val txRef = uri.getQueryParameter("tx_ref") ?: "flw_tx_ref_" + System.currentTimeMillis()
-                                        val transactionId = uri.getQueryParameter("transaction_id") ?: "12345"
-                                        onPaymentSuccess(txRef, transactionId)
-                                        return true
-                                    }
-                                    return false
-                                }
-                            }
-                        }
-                    },
-                    update = { webView ->
-                        webView.loadUrl(checkoutUrl)
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
             }
         }
     }

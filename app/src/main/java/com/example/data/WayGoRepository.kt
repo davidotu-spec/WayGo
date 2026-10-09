@@ -13,6 +13,10 @@ class WayGoRepository(private val dao: WayGoDao) {
         dao.insertOrUpdateProfile(profile)
     }
 
+    suspend fun deleteUserProfile() {
+        dao.deleteUserProfile()
+    }
+
     // Drivers
     val allDriversFlow: Flow<List<DriverEntity>> = dao.getAllDriversFlow()
     

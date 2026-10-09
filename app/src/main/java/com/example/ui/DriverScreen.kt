@@ -1,6 +1,9 @@
 package com.example.ui
 
+import android.Manifest
 import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,6 +57,7 @@ import kotlin.math.roundToInt
 fun DriverScreen(
     viewModel: WayGoViewModel,
     modifier: Modifier = Modifier,
+    authViewModel: AuthenticationViewModel? = null,
     onOpenSectionSheet: (() -> Unit)? = null
 ) {
     val drivers by viewModel.allDrivers.collectAsState()
@@ -74,62 +78,67 @@ fun DriverScreen(
     val context = LocalContext.current
     val activity = context as? Activity
 
-    val otpRequested by viewModel.otpRequested.collectAsState()
-    val generatedOtp by viewModel.generatedOtp.collectAsState()
-    val isOtpSending by viewModel.isOtpSending.collectAsState()
-    val smsGatewayStatus by viewModel.smsGatewayStatus.collectAsState()
-
     val isDark = MaterialTheme.colorScheme.background == BrandBlueDark
 
+    // BackHandler ensures pressing the back button in Driver Hub returns to the Passenger section
+    androidx.activity.compose.BackHandler {
+        viewModel.setRole("PASSENGER")
+    }
+
     if (!isDriverLoggedIn) {
-        DriverAuthView(
-            email = driverEmail,
-            pass = driverPassword,
-            isAuthenticating = isDriverAuthenticating,
-            authError = driverAuthError,
-            otpRequested = otpRequested,
-            generatedOtp = generatedOtp,
-            isOtpSending = isOtpSending,
-            smsGatewayStatus = smsGatewayStatus,
-            onRequestOtp = { ph -> viewModel.requestOtp(activity, ph) },
-            onRequestOtpWithProfile = { ph, nm -> viewModel.requestOtp(activity, ph, nm) },
-            onVerifyOtp = { code -> viewModel.verifyOtp(code) },
-            onEmailChange = { viewModel.setDriverEmail(it) },
-            onPassChange = { viewModel.setDriverPassword(it) },
-            onLoginSubmit = { em, pw -> viewModel.loginDriverWithEmail(em, pw) },
-            onQuickDriverSelect = { email, pass ->
-                viewModel.setDriverEmail(email)
-                viewModel.setDriverPassword(pass)
-                viewModel.loginDriverWithEmail(email, pass)
-            },
-            onRegisterSubmit = { email, pass, name, vehicleType, vehiclePlate, licenseNum, onError ->
-                viewModel.registerDriverWithEmail(
-                    email = email,
-                    pass = pass,
-                    name = name,
-                    vehicleType = vehicleType,
-                    vehiclePlate = vehiclePlate,
-                    licenseNum = licenseNum,
-                    onSuccess = { },
-                    onError = onError
-                )
-            },
-            onGoogleDriverAuth = { email, name, pass, vehicleType, vehiclePlate, licenseNum, isRegisterMode, onError ->
-                viewModel.loginOrRegisterDriverWithGoogle(
-                    googleEmail = email,
-                    googleName = name,
-                    pass = pass,
-                    vehicleType = vehicleType,
-                    vehiclePlate = vehiclePlate,
-                    licenseNum = licenseNum,
-                    isRegisterMode = isRegisterMode,
-                    onSuccess = { },
-                    onError = onError
-                )
-            },
-            onSelectRole = { role -> viewModel.setRole(role) },
-            isDark = isDark
-        )
+        if (authViewModel != null) {
+            LoginScreen(
+                authViewModel = authViewModel,
+                initialRole = "DRIVER",
+                onAuthSuccess = { role ->
+                    viewModel.onAuthenticationSuccess(role)
+                },
+                onNavigateBack = { viewModel.setRole("PASSENGER") },
+                onRoleChange = { newRole -> viewModel.setRole(newRole) }
+            )
+        } else {
+            DriverAuthView(
+                email = driverEmail,
+                pass = driverPassword,
+                isAuthenticating = isDriverAuthenticating,
+                authError = driverAuthError,
+                onEmailChange = { viewModel.setDriverEmail(it) },
+                onPassChange = { viewModel.setDriverPassword(it) },
+                onLoginSubmit = { em, pw -> viewModel.loginDriverWithEmail(em, pw) },
+                onQuickDriverSelect = { email, pass ->
+                    viewModel.setDriverEmail(email)
+                    viewModel.setDriverPassword(pass)
+                    viewModel.loginDriverWithEmail(email, pass)
+                },
+                onRegisterSubmit = { email, pass, name, vehicleType, vehiclePlate, licenseNum, onError ->
+                    viewModel.registerDriverWithEmail(
+                        email = email,
+                        pass = pass,
+                        name = name,
+                        vehicleType = vehicleType,
+                        vehiclePlate = vehiclePlate,
+                        licenseNum = licenseNum,
+                        onSuccess = { viewModel.onAuthenticationSuccess("DRIVER") },
+                        onError = onError
+                    )
+                },
+                onGoogleDriverAuth = { email, name, pass, vehicleType, vehiclePlate, licenseNum, isRegisterMode, onError ->
+                    viewModel.loginOrRegisterDriverWithGoogle(
+                        googleEmail = email,
+                        googleName = name,
+                        pass = pass,
+                        vehicleType = vehicleType,
+                        vehiclePlate = vehiclePlate,
+                        licenseNum = licenseNum,
+                        isRegisterMode = isRegisterMode,
+                        onSuccess = { viewModel.onAuthenticationSuccess("DRIVER") },
+                        onError = onError
+                    )
+                },
+                onSelectRole = { role -> viewModel.setRole(role) },
+                isDark = isDark
+            )
+        }
         return
     }
 
@@ -151,7 +160,10 @@ fun DriverScreen(
             userEmail = drivers.firstOrNull { it.id == activeDriverId }?.name ?: "driver@waygo.gm",
             isDark = isDark,
             onDismiss = { showSignOutModal = false },
-            onConfirmSignOut = { viewModel.logoutDriver() }
+            onConfirmSignOut = {
+                viewModel.logoutDriver()
+                authViewModel?.logoutDriver()
+            }
         )
     }
 
@@ -161,8 +173,23 @@ fun DriverScreen(
     val batteryLevel = simulatedBatteryLevel ?: systemBatteryLevel
     val isCharging = systemIsCharging
 
-    // Find the currently active driver object
-    val currentDriver = drivers.firstOrNull { it.id == activeDriverId } ?: drivers.firstOrNull()
+    // Fallback default driver prevents infinite spinner during async Room initialization
+    val fallbackDriver = remember {
+        DriverEntity(
+            id = "drv_alieu",
+            name = "Alieu Ceesay",
+            phone = "+220 992 4831",
+            vehicleType = "CAR",
+            vehiclePlate = "BJL 4821 C",
+            rating = 4.8f,
+            approvalStatus = "APPROVED",
+            isOnline = true,
+            currentLat = 13.4470,
+            currentLng = -16.6790,
+            driverLicense = "DL-2024-9981"
+        )
+    }
+    val currentDriver = drivers.firstOrNull { it.id == activeDriverId } ?: drivers.firstOrNull() ?: fallbackDriver
 
     val cardBg = if (isDark) Color(0xFF1E293B) else PureWhite
     val textPrimary = if (isDark) PureWhite else BrandBlueDark
@@ -181,23 +208,64 @@ fun DriverScreen(
     // Visual demand surge alert notification state
     var activeSurgeEvent by remember { mutableStateOf<DemandSurgeEvent?>(null) }
 
-    // Real-time Firestore Vicinity Listener for Active Online Driver
-    LaunchedEffect(currentDriver?.id, currentDriver?.isOnline, currentDriver?.currentLat, currentDriver?.currentLng, currentDriver?.vehicleType) {
-        if (currentDriver != null && currentDriver.isOnline) {
+    val driverLiveLocation by com.example.data.DriverFusedLocationTracker.locationState.collectAsState()
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
+            com.example.data.DriverFusedLocationTracker.startTracking(
+                context = context,
+                driverId = currentDriver.id,
+                driverName = currentDriver.name,
+                driverPhone = currentDriver.phone,
+                vehicleType = currentDriver.vehicleType,
+                vehiclePlate = currentDriver.vehiclePlate,
+                rating = currentDriver.rating.toDouble()
+            )
+        }
+    }
+
+    // Real-time Firestore Vicinity Listener & FusedLocation Tracking for Active Online Driver
+    // (Keyed stably on driver ID, online state, and vehicle type to avoid recreating listener every 4s)
+    LaunchedEffect(currentDriver.id, currentDriver.isOnline, currentDriver.vehicleType) {
+        if (currentDriver.isOnline) {
             viewModel.startListeningToNearbyRidesForDriver(
                 driverId = currentDriver.id,
                 driverLat = currentDriver.currentLat,
                 driverLng = currentDriver.currentLng,
                 vehicleType = currentDriver.vehicleType
             )
+            if (com.example.data.DriverFusedLocationTracker.hasLocationPermission(context)) {
+                com.example.data.DriverFusedLocationTracker.startTracking(
+                    context = context,
+                    driverId = currentDriver.id,
+                    driverName = currentDriver.name,
+                    driverPhone = currentDriver.phone,
+                    vehicleType = currentDriver.vehicleType,
+                    vehiclePlate = currentDriver.vehiclePlate,
+                    rating = currentDriver.rating.toDouble()
+                )
+            } else {
+                locationPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
         } else {
             viewModel.stopListeningToNearbyRides()
+            com.example.data.DriverFusedLocationTracker.stopTracking()
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
             viewModel.stopListeningToNearbyRides()
+            com.example.data.DriverFusedLocationTracker.stopTracking()
         }
     }
 
@@ -584,6 +652,127 @@ fun DriverScreen(
                                             fontSize = 11.sp,
                                             color = BrandBlueDark.copy(alpha = 0.8f)
                                         )
+                                    }
+                                }
+                            }
+
+                            // Real-time FusedLocationProviderClient GPS Telematics & Firestore Card
+                            if (currentDriver.isOnline) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("driver_fused_location_telematics_card"),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isDark) Color(0xFF1E293B) else BrandBlueLight.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (driverLiveLocation.isFirestoreSyncActive) SuccessGreen.copy(alpha = 0.5f) else BrandBluePrimary.copy(alpha = 0.2f)
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.GpsFixed,
+                                                    contentDescription = "GPS Telematics",
+                                                    tint = if (driverLiveLocation.isTracking) SuccessGreen else BrandBluePrimary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "FusedLocation GPS Telematics",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    color = textPrimary
+                                                )
+                                            }
+                                            Surface(
+                                                color = if (driverLiveLocation.isFirestoreSyncActive) SuccessGreen.copy(alpha = 0.15f) else AccentAmber.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(6.dp)
+                                                            .clip(CircleShape)
+                                                            .background(if (driverLiveLocation.isFirestoreSyncActive) SuccessGreen else AccentAmber)
+                                                    )
+                                                    Text(
+                                                        text = if (driverLiveLocation.isFirestoreSyncActive) "Firestore Synced" else "Connecting",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = if (driverLiveLocation.isFirestoreSyncActive) SuccessGreen else AccentAmber
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text("Coordinates (Lat / Lng)", fontSize = 10.sp, color = textSecondary)
+                                                Text(
+                                                    text = driverLiveLocation.coordinatesDisplay,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = textPrimary
+                                                )
+                                            }
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Text("Speed / Accuracy", fontSize = 10.sp, color = textSecondary)
+                                                Text(
+                                                    text = "${driverLiveLocation.speedKmh.roundToInt()} km/h · ±${driverLiveLocation.accuracyMeters.roundToInt()}m",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = textPrimary
+                                                )
+                                            }
+                                        }
+
+                                        if (driverLiveLocation.errorMessage != null) {
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = driverLiveLocation.errorMessage ?: "",
+                                                color = ErrorRed,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+
+                                        if (!com.example.data.DriverFusedLocationTracker.hasLocationPermission(context)) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Button(
+                                                onClick = {
+                                                    locationPermissionLauncher.launch(
+                                                        arrayOf(
+                                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                                            Manifest.permission.ACCESS_COARSE_LOCATION
+                                                        )
+                                                    )
+                                                },
+                                                modifier = Modifier.fillMaxWidth().height(32.dp).testTag("btn_grant_driver_location_perm"),
+                                                colors = ButtonDefaults.buttonColors(containerColor = BrandBluePrimary),
+                                                contentPadding = PaddingValues(horizontal = 8.dp)
+                                            ) {
+                                                Text("Grant GPS Location Permission", fontSize = 11.sp, color = Color.White)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -3345,13 +3534,6 @@ fun DriverAuthView(
     pass: String,
     isAuthenticating: Boolean,
     authError: String,
-    otpRequested: Boolean = false,
-    generatedOtp: String = "",
-    isOtpSending: Boolean = false,
-    smsGatewayStatus: String = "",
-    onRequestOtp: (String) -> Unit = {},
-    onRequestOtpWithProfile: (String, String) -> Unit = { p, _ -> onRequestOtp(p) },
-    onVerifyOtp: (String) -> Unit = {},
     onEmailChange: (String) -> Unit,
     onPassChange: (String) -> Unit,
     onLoginSubmit: (String, String) -> Unit,
@@ -3420,19 +3602,6 @@ fun DriverAuthView(
                 onPassChange(pw)
                 onRegisterSubmit(em, pw, nm, vt, vp, ln, errCb)
             },
-            onRequestOtp = { ph ->
-                onRequestOtp(ph)
-            },
-            onRequestOtpWithProfile = { ph, nm ->
-                onRequestOtpWithProfile(ph, nm)
-            },
-            onVerifyOtp = { code ->
-                onVerifyOtp(code)
-            },
-            otpRequested = otpRequested,
-            generatedOtp = generatedOtp,
-            isOtpSending = isOtpSending,
-            smsGatewayStatus = smsGatewayStatus,
             authError = authError,
             onQuickSelectAccount = { em, pw ->
                 onQuickDriverSelect(em, pw)

@@ -63,12 +63,16 @@ fun AccountVerificationDialog(
 
     Dialog(
         onDismissRequest = safeDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight()
+                .imePadding()
                 .padding(16.dp)
                 .testTag("account_verification_dialog"),
             shape = RoundedCornerShape(24.dp),

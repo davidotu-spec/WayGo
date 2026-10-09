@@ -69,7 +69,8 @@ fun ForgotPasswordDialog(
         properties = DialogProperties(
             dismissOnBackPress = !isLoading,
             dismissOnClickOutside = !isLoading,
-            usePlatformDefaultWidth = false
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
         )
     ) {
         Surface(
@@ -79,6 +80,7 @@ fun ForgotPasswordDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight()
+                .imePadding()
                 .testTag("forgot_password_dialog")
         ) {
             Column(

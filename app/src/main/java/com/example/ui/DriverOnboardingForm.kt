@@ -61,6 +61,7 @@ fun DriverOnboardingForm(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .verticalScroll(scrollState)
                 .padding(16.dp)
         ) {
@@ -166,41 +167,6 @@ fun DriverOnboardingForm(
             }
 
             if (!submitSuccess) {
-                // Info Subheader
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = PureWhite),
-                    border = BorderStroke(1.dp, BrandBluePrimary.copy(alpha = 0.15f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "Info",
-                            tint = BrandBluePrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                "Submit to Firestore",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = BrandBlueDark
-                            )
-                            Text(
-                                "Enter standard details to launch your partner registration. Submissions sync directly with Firestore databases and fallback seamlessly when offline.",
-                                fontSize = 11.sp,
-                                color = NeutralGray
-                            )
-                        }
-                    }
-                }
-
                 // FORM SECTION
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -424,7 +390,7 @@ fun DriverOnboardingForm(
                         // DRIVER LICENSE
                         Column {
                             Text(
-                                "Gambia Police License Code *",
+                                "Gambia Driver License code *",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
                                 color = BrandBlueDark

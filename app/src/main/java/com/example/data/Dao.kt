@@ -15,6 +15,9 @@ interface WayGoDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateProfile(profile: UserProfileEntity)
 
+    @Query("DELETE FROM user_profiles WHERE id = 'current_passenger'")
+    suspend fun deleteUserProfile()
+
     // Drivers
     @Query("SELECT * FROM drivers")
     fun getAllDriversFlow(): Flow<List<DriverEntity>>

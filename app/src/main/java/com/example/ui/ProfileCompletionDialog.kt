@@ -86,7 +86,8 @@ fun ProfileCompletionDialog(
         properties = DialogProperties(
             dismissOnBackPress = true,
             dismissOnClickOutside = true,
-            usePlatformDefaultWidth = false
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
         )
     ) {
         Surface(
@@ -96,6 +97,7 @@ fun ProfileCompletionDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight()
+                .imePadding()
                 .padding(vertical = 16.dp)
                 .testTag("profile_completion_dialog")
         ) {
