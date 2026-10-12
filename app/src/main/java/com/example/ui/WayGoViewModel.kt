@@ -803,7 +803,9 @@ class WayGoViewModel(
     fun logout() {
         FirebaseAuthManager.signOut()
         _isUserLoggedIn.value = false
+        _isDriverLoggedIn.value = false
         _authError.value = ""
+        _driverAuthError.value = ""
     }
 
 <<<<<<< HEAD
@@ -1423,15 +1425,98 @@ class WayGoViewModel(
                 .ifBlank { "WayGo Passenger" }
         }
 
+        val cleanPass = pass.trim()
+        if (cleanPass.isBlank()) {
+            _isPassengerAuthenticating.value = false
+            _authError.value = "Please enter your password."
+            onError("Please enter your password.")
+            return
+        }
+
+        if (cleanPass.length < 6) {
+            _isPassengerAuthenticating.value = false
+            val errMsg = "Password must be at least 6 characters long."
+            _authError.value = errMsg
+            onError(errMsg)
+            return
+        }
+
         _isPassengerAuthenticating.value = true
 
-        viewModelScope.launch {
-            // Generate Google ID Token representation adhering to RS256 standard and standard claims
-            val idToken = GoogleTokenVerifier.createSimulatedGoogleIdToken(cleanEmail, cleanName)
+        if (!isRegisterMode) {
+            // Strict credential verification for existing Google account sign in
+            FirebaseAuthManager.signInWithEmail(
+                email = cleanEmail,
+                pass = cleanPass,
+                onSuccess = {
+                    val idToken = GoogleTokenVerifier.createSimulatedGoogleIdToken(cleanEmail, cleanName)
+                    FirebaseAuthManager.signInWithGoogleIdToken(
+                        idToken = idToken,
+                        password = cleanPass,
+                        onSuccess = { verifiedEmail, verifiedName, isLinked ->
+                            _isPassengerAuthenticating.value = false
+                            _authError.value = ""
+                            _isUserLoggedIn.value = true
+                            _currentRole.value = "PASSENGER"
 
-            // Perform backend signature and claim verification with auto-linking
+                            val currentUid = FirebaseAuthManager.getCurrentUser()?.uid ?: "google_uid_${Math.abs(verifiedEmail.hashCode())}"
+                            val currentProf = userProfile.value
+                            val finalName = if (cleanName.isNotBlank()) cleanName else verifiedName
+                            val finalPhone = currentProf?.phone ?: "+220 7712345"
+
+                            viewModelScope.launch {
+                                repository.saveUserProfile(
+                                    UserProfileEntity(
+                                        id = "current_passenger",
+                                        name = finalName,
+                                        phone = finalPhone,
+                                        email = verifiedEmail,
+                                        gender = currentProf?.gender ?: "Male",
+                                        mobileMoneyNumber = currentProf?.mobileMoneyNumber ?: "+220 7712345",
+                                        savedHome = currentProf?.savedHome ?: "Westfield Monument, Serrekunda",
+                                        savedWork = currentProf?.savedWork ?: "Banjul Sea Port",
+                                        avatarIndex = currentProf?.avatarIndex ?: 0
+                                    )
+                                )
+                                triggerProfileCompletionPrompt(
+                                    uid = currentUid,
+                                    email = verifiedEmail,
+                                    initialName = finalName,
+                                    initialPhone = finalPhone,
+                                    role = "PASSENGER"
+                                )
+                                triggerAccountVerification(verifiedEmail, "PASSENGER", onComplete = {})
+                            }
+                            onSuccess()
+                        },
+                        onError = { err ->
+                            _isPassengerAuthenticating.value = false
+                            _authError.value = err
+                            onError(err)
+                        }
+                    )
+                },
+                onError = { err ->
+                    _isPassengerAuthenticating.value = false
+                    _authError.value = err
+                    onError(err)
+                }
+            )
+        } else {
+            val storedPass = FirebaseAuthManager.getStoredPassword(cleanEmail)
+            if (storedPass != null && storedPass != cleanPass) {
+                _isPassengerAuthenticating.value = false
+                val errMsg = "Incorrect password. An account with '$cleanEmail' already exists with a different password."
+                _authError.value = errMsg
+                onError(errMsg)
+                return
+            }
+
+            FirebaseAuthManager.saveLocalCredentials(cleanEmail, cleanPass)
+            val idToken = GoogleTokenVerifier.createSimulatedGoogleIdToken(cleanEmail, cleanName)
             FirebaseAuthManager.signInWithGoogleIdToken(
                 idToken = idToken,
+                password = cleanPass,
                 onSuccess = { verifiedEmail, verifiedName, isLinked ->
                     _isPassengerAuthenticating.value = false
                     _authError.value = ""
@@ -1439,10 +1524,11 @@ class WayGoViewModel(
                     _currentRole.value = "PASSENGER"
 
                     val currentUid = FirebaseAuthManager.getCurrentUser()?.uid ?: "google_uid_${Math.abs(verifiedEmail.hashCode())}"
+                    val currentProf = userProfile.value
+                    val finalName = if (cleanName.isNotBlank()) cleanName else verifiedName
+                    val finalPhone = currentProf?.phone ?: "+220 7712345"
+
                     viewModelScope.launch {
-                        val currentProf = userProfile.value
-                        val finalName = if (cleanName.isNotBlank()) cleanName else verifiedName
-                        val finalPhone = currentProf?.phone ?: "+220 7712345"
                         repository.saveUserProfile(
                             UserProfileEntity(
                                 id = "current_passenger",
@@ -1463,8 +1549,9 @@ class WayGoViewModel(
                             initialPhone = finalPhone,
                             role = "PASSENGER"
                         )
-                        triggerAccountVerification(verifiedEmail, "PASSENGER", onComplete = onSuccess)
+                        triggerAccountVerification(verifiedEmail, "PASSENGER", onComplete = {})
                     }
+                    onSuccess()
                 },
                 onError = { err ->
                     _isPassengerAuthenticating.value = false
@@ -1506,13 +1593,73 @@ class WayGoViewModel(
         }
         val effectivePlate = vehiclePlate.ifBlank { "BJL 9988 X" }
 
+        val cleanPass = pass.trim()
+        if (cleanPass.isBlank()) {
+            _isDriverAuthenticating.value = false
+            _driverAuthError.value = "Please enter your password."
+            onError("Please enter your password.")
+            return
+        }
+
+        if (cleanPass.length < 6) {
+            _isDriverAuthenticating.value = false
+            val errMsg = "Password must be at least 6 characters long."
+            _driverAuthError.value = errMsg
+            onError(errMsg)
+            return
+        }
+
         _isDriverAuthenticating.value = true
 
-        viewModelScope.launch {
-            val idToken = GoogleTokenVerifier.createSimulatedGoogleIdToken(cleanEmail, cleanName)
+        if (!isRegisterMode) {
+            // Strict credential verification for existing Driver Google sign in
+            FirebaseAuthManager.signInWithEmail(
+                email = cleanEmail,
+                pass = cleanPass,
+                onSuccess = {
+                    val idToken = GoogleTokenVerifier.createSimulatedGoogleIdToken(cleanEmail, cleanName)
+                    FirebaseAuthManager.signInWithGoogleIdToken(
+                        idToken = idToken,
+                        password = cleanPass,
+                        onSuccess = { verifiedEmail, verifiedName, isLinked ->
+                            _isDriverAuthenticating.value = false
+                            _driverAuthError.value = ""
+                            _isDriverLoggedIn.value = true
+                            _currentRole.value = "DRIVER"
+                            _driverEmail.value = verifiedEmail
+                            viewModelScope.launch {
+                                triggerAccountVerification(verifiedEmail, "DRIVER", onComplete = {})
+                            }
+                            onSuccess()
+                        },
+                        onError = { err ->
+                            _isDriverAuthenticating.value = false
+                            _driverAuthError.value = err
+                            onError(err)
+                        }
+                    )
+                },
+                onError = { err ->
+                    _isDriverAuthenticating.value = false
+                    _driverAuthError.value = err
+                    onError(err)
+                }
+            )
+        } else {
+            val storedPass = FirebaseAuthManager.getStoredPassword(cleanEmail)
+            if (storedPass != null && storedPass != cleanPass) {
+                _isDriverAuthenticating.value = false
+                val errMsg = "Incorrect password. An account with '$cleanEmail' already exists with a different password."
+                _driverAuthError.value = errMsg
+                onError(errMsg)
+                return
+            }
 
+            FirebaseAuthManager.saveLocalCredentials(cleanEmail, cleanPass)
+            val idToken = GoogleTokenVerifier.createSimulatedGoogleIdToken(cleanEmail, cleanName)
             FirebaseAuthManager.signInWithGoogleIdToken(
                 idToken = idToken,
+                password = cleanPass,
                 onSuccess = { verifiedEmail, verifiedName, isLinked ->
                     _isDriverAuthenticating.value = false
                     _driverAuthError.value = ""
@@ -1522,31 +1669,18 @@ class WayGoViewModel(
 
                     viewModelScope.launch {
                         val finalName = if (cleanName.isNotBlank()) cleanName else verifiedName
-                        if (isRegisterMode) {
-                            registerDriverWithEmail(
-                                email = verifiedEmail,
-                                pass = "google_auth_${Math.abs(verifiedEmail.hashCode())}",
-                                name = finalName,
-                                vehicleType = vehicleType,
-                                vehiclePlate = vehiclePlate,
-                                licenseNum = licenseNum,
-                                onSuccess = {
-                                    _isDriverLoggedIn.value = true
-                                    _currentRole.value = "DRIVER"
-                                    _driverEmail.value = verifiedEmail
-                                    onSuccess()
-                                },
-                                onError = { err ->
-                                    // If already linked/registered driver, still proceed safely
-                                    _isDriverLoggedIn.value = true
-                                    _currentRole.value = "DRIVER"
-                                    onSuccess()
-                                }
-                            )
-                        } else {
-                            triggerAccountVerification(verifiedEmail, "DRIVER", onComplete = onSuccess)
-                        }
+                        registerDriverWithEmail(
+                            email = verifiedEmail,
+                            pass = cleanPass,
+                            name = finalName,
+                            vehicleType = vehicleType,
+                            vehiclePlate = effectivePlate,
+                            licenseNum = licenseNum.ifBlank { "GAM-DL-9082" },
+                            onSuccess = {},
+                            onError = {}
+                        )
                     }
+                    onSuccess()
                 },
                 onError = { err ->
                     _isDriverAuthenticating.value = false
@@ -2696,6 +2830,7 @@ class WayGoViewModel(
         vehiclePlate: String,
         driverLicense: String,
         verificationInfo: String,
+        documentUri: String? = null,
         onComplete: (Boolean) -> Unit
     ) {
         val uniqueId = "drv_" + (1000..9999).random().toString()
@@ -2725,6 +2860,7 @@ class WayGoViewModel(
                 vehiclePlate = vehiclePlate,
                 driverLicense = driverLicense,
                 verificationInfo = verificationInfo,
+                documentUri = documentUri,
                 onComplete = { success ->
                     onComplete(success)
                 }

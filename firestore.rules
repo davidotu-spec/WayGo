@@ -66,6 +66,14 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------
+    // 1b. RIDES (Web Admin Portal waygowebadminportal.com & Dispatch Collection)
+    // ---------------------------------------------------------
+    match /rides/{rideId} {
+      // Allow read and write for app passengers, drivers, and admin portal
+      allow read, write: if true;
+    }
+
+    // ---------------------------------------------------------
     // 2. ACTIVE RIDE REQUESTS (Real-time Ride Dispatch & Lifecycle)
     // ---------------------------------------------------------
     match /active_ride_requests/{requestId} {

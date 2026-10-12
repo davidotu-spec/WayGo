@@ -6,22 +6,60 @@ import com.google.firebase.firestore.FirebaseFirestore
 object FirestoreManager {
     private const val TAG = "FirestoreManager"
 
+    // Primary Firestore Database name used by Google Cloud / Firebase Web Admin Portal
+    const val DEFAULT_DATABASE_NAME = "(default)"
     const val TARGET_DATABASE_ID = "ai-studio-waygowebadminpor-c1516e60-02c8-483e-a695-a688e66c6ae3"
 
-    // Safely retrieve the Firestore instance. First attempts connection to the 
-    // web admin portal's dedicated database ID, falling back to default instance.
+    /**
+     * Primary production Firestore instance. In Android Studio production builds and real deployments,
+     * the Firebase Web Admin Portal (https://waygowebadminportal.com/) connects to the standard default
+     * database '(default)'. Using FirebaseFirestore.getInstance() connects directly to '(default)'.
+     */
     val firestore: FirebaseFirestore? by lazy {
         try {
-            try {
-                FirebaseFirestore.getInstance(TARGET_DATABASE_ID)
-            } catch (e: Exception) {
-                Log.d(TAG, "Named database $TARGET_DATABASE_ID not initialized, falling back to default instance: ${e.localizedMessage}")
-                FirebaseFirestore.getInstance()
-            }
+            // 1. Primary: Standard default Firebase Firestore instance used in production by waygowebadminportal.com
+            FirebaseFirestore.getInstance()
         } catch (e: Exception) {
-            Log.i(TAG, "Firebase Firestore holds pending configuration. Running simulated offline-first fallback. Info: ${e.localizedMessage}")
+            Log.w(TAG, "Standard default Firestore instance initialization fallback: ${e.localizedMessage}")
+            try {
+                // 2. Secondary fallback to named database if explicitly configured in AI Studio
+                FirebaseFirestore.getInstance(TARGET_DATABASE_ID)
+            } catch (e2: Exception) {
+                Log.i(TAG, "Firebase Firestore holds pending configuration. Running simulated offline-first fallback. Info: ${e2.localizedMessage}")
+                null
+            }
+        }
+    }
+
+    /**
+     * Secondary reference to the AI Studio named database for dual-mirroring if needed.
+     */
+    val legacyAiStudioFirestore: FirebaseFirestore? by lazy {
+        try {
+            FirebaseFirestore.getInstance(TARGET_DATABASE_ID)
+        } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * Health check verifying real-time sync with Firebase and https://waygowebadminportal.com/.
+     */
+    fun checkWebAdminPortalSyncStatus(onResult: (Boolean, String) -> Unit) {
+        val db = firestore
+        if (db == null) {
+            onResult(false, "Firestore instance is uninitialized. Verify google-services.json in Android Studio.")
+            return
+        }
+        db.collection("ride_requests")
+            .limit(1)
+            .get()
+            .addOnSuccessListener {
+                onResult(true, "Connected to production Cloud Firestore '(default)' database. Synchronized with https://waygowebadminportal.com/.")
+            }
+            .addOnFailureListener { e ->
+                onResult(false, "Firestore sync check: ${e.localizedMessage}. Check internet connection or project rules.")
+            }
     }
 
     /**
@@ -184,6 +222,7 @@ object FirestoreManager {
         vehiclePlate: String,
         driverLicense: String,
         verificationInfo: String,
+        documentUri: String? = null,
         onComplete: (Boolean) -> Unit
     ) {
         val onboardingData = hashMapOf(
@@ -194,6 +233,7 @@ object FirestoreManager {
             "vehiclePlate" to vehiclePlate,
             "driverLicense" to driverLicense,
             "verificationInfo" to verificationInfo,
+            "documentUri" to (documentUri ?: "verified_license_attachment"),
             "approvalStatus" to "PENDING",
             "isVerified" to false,
             "rating" to 5.0,

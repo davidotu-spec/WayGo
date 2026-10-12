@@ -22,6 +22,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import coil.compose.rememberAsyncImagePainter
+import com.example.R
 import com.example.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,6 +44,24 @@ fun DriverOnboardingForm(
     var vehiclePlate by remember { mutableStateOf("") }
     var driverLicense by remember { mutableStateOf("") }
     var verificationInfo by remember { mutableStateOf("") }
+
+    // Upload License or Document states
+    var licenseDocumentUri by remember { mutableStateOf<String?>(null) }
+    var licenseDocumentName by remember { mutableStateOf<String?>(null) }
+    var isSampleDocAttached by remember { mutableStateOf(false) }
+    var documentError by remember { mutableStateOf<String?>(null) }
+
+    // Zero-permission Android Photo Picker for Licence or Document
+    val documentPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            licenseDocumentUri = uri.toString()
+            licenseDocumentName = uri.lastPathSegment ?: "driver_license_document.jpg"
+            isSampleDocAttached = false
+            documentError = null
+        }
+    }
 
     // Validation & Error state
     var nameError by remember { mutableStateOf<String?>(null) }
@@ -429,6 +454,230 @@ fun DriverOnboardingForm(
                             }
                         }
 
+                        // UPLOAD LICENCE OR DOCUMENT SECTION (Mandatory for Approval)
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("onboard_upload_licence_card"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (documentError != null) ErrorRed.copy(alpha = 0.05f) else BrandBlueLight
+                            ),
+                            border = BorderStroke(
+                                width = if (documentError != null) 1.5.dp else 1.dp,
+                                color = if (documentError != null) ErrorRed else BrandBlueSecondary.copy(alpha = 0.35f)
+                            ),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Badge,
+                                            contentDescription = "Licence Document",
+                                            tint = BrandBluePrimary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                "Upload Driver Licence / Document *",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = BrandBlueDark
+                                            )
+                                            Text(
+                                                "Required for admin review & fleet approval",
+                                                fontSize = 10.sp,
+                                                color = NeutralGray
+                                            )
+                                        }
+                                    }
+
+                                    if (licenseDocumentUri != null || isSampleDocAttached) {
+                                        Badge(
+                                            containerColor = SuccessGreen.copy(alpha = 0.15f),
+                                            contentColor = SuccessGreen
+                                        ) {
+                                            Text(
+                                                "Attached",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.sp,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Badge(
+                                            containerColor = ErrorRed.copy(alpha = 0.12f),
+                                            contentColor = ErrorRed
+                                        ) {
+                                            Text(
+                                                "Required",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.sp,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Document Preview or Upload Box
+                                if (licenseDocumentUri != null || isSampleDocAttached) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(150.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color.White)
+                                            .testTag("onboard_document_preview_box"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isSampleDocAttached) {
+                                            Image(
+                                                painter = painterResource(id = R.drawable.img_sample_driver_license),
+                                                contentDescription = "Sample Gambia Driver Licence",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Image(
+                                                painter = rememberAsyncImagePainter(model = licenseDocumentUri),
+                                                contentDescription = "Uploaded Driver Licence",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        }
+
+                                        // Overlay badge & remove button
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(8.dp)
+                                        ) {
+                                            Surface(
+                                                color = Color.Black.copy(alpha = 0.65f),
+                                                shape = RoundedCornerShape(6.dp),
+                                                modifier = Modifier.align(Alignment.BottomStart)
+                                            ) {
+                                                Text(
+                                                    text = licenseDocumentName ?: "Gambia_Driving_Licence.jpg",
+                                                    color = Color.White,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+
+                                            IconButton(
+                                                onClick = {
+                                                    licenseDocumentUri = null
+                                                    licenseDocumentName = null
+                                                    isSampleDocAttached = false
+                                                },
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .size(28.dp)
+                                                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+                                                    .testTag("onboard_remove_doc_btn")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Remove Document",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                }
+
+                                // Upload Action Buttons
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            documentPickerLauncher.launch(
+                                                androidx.activity.result.PickVisualMediaRequest(
+                                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                                )
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("onboard_select_photo_picker_btn"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = BrandBluePrimary
+                                        ),
+                                        border = BorderStroke(1.dp, BrandBluePrimary)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.UploadFile,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            if (licenseDocumentUri != null || isSampleDocAttached) "Replace File" else "Browse Gallery",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            licenseDocumentUri = "sample_official_driver_license"
+                                            licenseDocumentName = "Gambia_Police_Driver_Licence_Sample.jpg"
+                                            isSampleDocAttached = true
+                                            documentError = null
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("onboard_attach_sample_doc_btn"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = BrandBlueDark
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AssignmentTurnedIn,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Attach Licence",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                documentError?.let {
+                                    Text(
+                                        text = it,
+                                        color = ErrorRed,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         // VERIFICATION INFORMATION (Background certified / details)
                         Column {
                             Text(
@@ -475,6 +724,7 @@ fun DriverOnboardingForm(
                                 phoneError = null
                                 plateError = null
                                 licenseError = null
+                                documentError = null
 
                                 var hasError = false
                                 if (name.isBlank()) {
@@ -493,9 +743,19 @@ fun DriverOnboardingForm(
                                     licenseError = "Invalid standard driving license code."
                                     hasError = true
                                 }
+                                if (licenseDocumentUri == null && !isSampleDocAttached) {
+                                    documentError = "You must upload or attach your Driver Licence before submitting for approval."
+                                    hasError = true
+                                }
 
                                 if (!hasError) {
                                     isSubmitting = true
+                                    val docReference = if (isSampleDocAttached) {
+                                        "sample_license_drawable"
+                                    } else {
+                                        licenseDocumentUri ?: "uploaded_license_doc"
+                                    }
+
                                     viewModel.onboardDriver(
                                         name = name,
                                         phone = phone,
@@ -503,6 +763,7 @@ fun DriverOnboardingForm(
                                         vehiclePlate = vehiclePlate,
                                         driverLicense = driverLicense,
                                         verificationInfo = verificationInfo,
+                                        documentUri = docReference,
                                         onComplete = { success ->
                                             isSubmitting = false
                                             submitSuccess = success

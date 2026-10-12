@@ -573,7 +573,6 @@ fun HomeScreenContent(
     val simLat by viewModel.simulatedDriverLat.collectAsState()
     val simLng by viewModel.simulatedDriverLng.collectAsState()
     val firestoreRideRequestStatus by viewModel.firestoreRideRequestStatus.collectAsState()
-    var isBookingSaving by remember { mutableStateOf(false) }
 
     var pickupName by remember { mutableStateOf("") }
     var dropoffName by remember { mutableStateOf("") }
@@ -589,7 +588,6 @@ fun HomeScreenContent(
 
     var showPickupDropdown by remember { mutableStateOf(false) }
     var showDropoffDropdown by remember { mutableStateOf(false) }
-    var vehicleDropdownExpanded by remember { mutableStateOf(false) }
 
     var selectedSavedPlaceForOptions by remember { mutableStateOf<com.example.data.SavedPlaceEntity?>(null) }
     var showAddSavedPlaceDialog by remember { mutableStateOf(false) }
@@ -623,6 +621,7 @@ fun HomeScreenContent(
     var mapPickingMode by remember { mutableStateOf<String?>(null) }
     var dynamicCalculatedFare by remember { mutableStateOf(150) }
     var useGoogleMapsSdk by remember { mutableStateOf(false) }
+    var isMapDropdownExpanded by remember { mutableStateOf(false) }
 
     var ratingScore by remember { mutableIntStateOf(5) }
     var ratingComment by remember { mutableStateOf("") }
@@ -709,7 +708,7 @@ fun HomeScreenContent(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    // Map Engine Switcher Header
+                    // Map Engine Switcher Header (Dropdown)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -728,26 +727,127 @@ fun HomeScreenContent(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = if (useGoogleMapsSdk) "Google Maps SDK" else "WayGo City Map",
+                                text = "Map View",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.5.sp,
                                 color = BrandBlueDark
                             )
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(
-                                selected = !useGoogleMapsSdk,
-                                onClick = { useGoogleMapsSdk = false },
-                                label = { Text("Vector", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                                modifier = Modifier.testTag("toggle_vector_map_chip")
-                            )
-                            FilterChip(
-                                selected = useGoogleMapsSdk,
-                                onClick = { useGoogleMapsSdk = true },
-                                label = { Text("Google Maps", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                modifier = Modifier.testTag("toggle_google_maps_chip")
-                            )
+                        // Map View Mode Dropdown
+                        Box {
+                            Surface(
+                                onClick = { isMapDropdownExpanded = true },
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (useGoogleMapsSdk) ErrorRed.copy(alpha = 0.08f) else BrandBluePrimary.copy(alpha = 0.08f),
+                                border = BorderStroke(1.dp, if (useGoogleMapsSdk) ErrorRed.copy(alpha = 0.35f) else BrandBluePrimary.copy(alpha = 0.35f)),
+                                modifier = Modifier.testTag("map_engine_dropdown_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (useGoogleMapsSdk) Icons.Default.Place else Icons.Default.Map,
+                                        contentDescription = null,
+                                        tint = if (useGoogleMapsSdk) ErrorRed else BrandBluePrimary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = if (useGoogleMapsSdk) "Google Maps" else "WayGo City Map",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (useGoogleMapsSdk) ErrorRed else BrandBluePrimary
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Expand Map Options",
+                                        tint = BrandBlueDark,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = isMapDropdownExpanded,
+                                onDismissRequest = { isMapDropdownExpanded = false },
+                                modifier = Modifier.testTag("map_engine_dropdown_menu")
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Map,
+                                                contentDescription = null,
+                                                tint = BrandBluePrimary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "WayGo City Map",
+                                                    fontWeight = if (!useGoogleMapsSdk) FontWeight.Bold else FontWeight.Normal,
+                                                    fontSize = 13.sp,
+                                                    color = BrandBlueDark
+                                                )
+                                                Text(
+                                                    text = "Fast vector local navigation",
+                                                    fontSize = 10.5.sp,
+                                                    color = NeutralGray
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        useGoogleMapsSdk = false
+                                        isMapDropdownExpanded = false
+                                    },
+                                    leadingIcon = if (!useGoogleMapsSdk) {
+                                        { Icon(Icons.Default.Check, contentDescription = null, tint = BrandBluePrimary, modifier = Modifier.size(16.dp)) }
+                                    } else null,
+                                    modifier = Modifier.testTag("map_option_vector")
+                                )
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Place,
+                                                contentDescription = null,
+                                                tint = ErrorRed,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "Google Maps",
+                                                    fontWeight = if (useGoogleMapsSdk) FontWeight.Bold else FontWeight.Normal,
+                                                    fontSize = 13.sp,
+                                                    color = BrandBlueDark
+                                                )
+                                                Text(
+                                                    text = "Satellite, live tiles & street map",
+                                                    fontSize = 10.5.sp,
+                                                    color = NeutralGray
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        useGoogleMapsSdk = true
+                                        isMapDropdownExpanded = false
+                                    },
+                                    leadingIcon = if (useGoogleMapsSdk) {
+                                        { Icon(Icons.Default.Check, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(16.dp)) }
+                                    } else null,
+                                    modifier = Modifier.testTag("map_option_google_maps")
+                                )
+                            }
                         }
                     }
 
@@ -838,73 +938,6 @@ fun HomeScreenContent(
         }
 
         if (activeTrip == null) {
-            // UI FORM TO COLLECT RIDE DETAILS & SAVE TO FIRESTORE 'ride_requests' COLLECTION
-            item {
-                val formPickupLoc = remember(pickupName, pCoordinates) {
-                    RideLocation(
-                        name = pickupName.ifBlank { "Kairaba Avenue" },
-                        address = pickupName.ifBlank { "Kairaba Avenue, Serrekunda" },
-                        latitude = pCoordinates?.lat ?: 13.4471,
-                        longitude = pCoordinates?.lng ?: -16.6791
-                    )
-                }
-                val formDropoffLoc = remember(dropoffName, dCoordinates) {
-                    RideLocation(
-                        name = dropoffName.ifBlank { "Albert Market" },
-                        address = dropoffName.ifBlank { "Albert Market, Banjul" },
-                        latitude = dCoordinates?.lat ?: 13.4533,
-                        longitude = dCoordinates?.lng ?: -16.5746
-                    )
-                }
-
-                RideRequestForm(
-                    pickupLocation = formPickupLoc,
-                    destinationLocation = formDropoffLoc,
-                    selectedVehicleType = selectVehicleType,
-                    onPickupChanged = { loc ->
-                        pickupName = loc.name
-                        pCoordinates = GLocation(loc.name, loc.latitude, loc.longitude)
-                    },
-                    onDestinationChanged = { loc ->
-                        dropoffName = loc.name
-                        dCoordinates = GLocation(loc.name, loc.latitude, loc.longitude)
-                    },
-                    onVehicleTypeChanged = { type ->
-                        selectVehicleType = type
-                    },
-                    passengerId = profile?.email?.ifBlank { null } ?: profile?.id ?: "usr_passenger",
-                    passengerName = profile?.name ?: "John Doe",
-                    passengerPhone = profile?.phone ?: "+220 7000000",
-                    isSaving = isBookingSaving,
-                    firestoreStatusMessage = firestoreRideRequestStatus,
-                    onUseCurrentLocation = {
-                        locationHelper.requestPermissionAndLocation()
-                        val state = locationHelper.state.value
-                        val name = state.locationName.ifBlank { "Current Location" }
-                        pickupName = name
-                        pCoordinates = GLocation(name, state.latitude, state.longitude)
-                    },
-                    onOpenMapPicker = { mode ->
-                        useGoogleMapsSdk = true
-                        mapPickingMode = if (mode == MapTargetMode.PICKUP) "PICKUP" else "DROPOFF"
-                    },
-                    initialPaymentMethod = selectPaymentMethod,
-                    onSubmitRideRequest = { formData ->
-                        isBookingSaving = true
-                        viewModel.saveRideDetailsToFirestore(
-                            pickupLocation = formData.pickupLocation,
-                            destinationLocation = formData.destinationLocation,
-                            vehicleType = formData.vehicleType,
-                            paymentMethod = formData.paymentMethod,
-                            fareGmd = formData.fareGmd,
-                            preferences = formData.preferences
-                        ) { _, _ ->
-                            isBookingSaving = false
-                        }
-                    }
-                )
-            }
-
             // RIDE REQUEST CREATION PANEL
             item {
                 Card(
@@ -1630,81 +1663,8 @@ fun HomeScreenContent(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Vehicle Selector Header & Dropdown
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Select Vehicle Type", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandBlueDark)
-
-                            // Vehicle Type Dropdown
-                            Box {
-                                OutlinedButton(
-                                    onClick = { vehicleDropdownExpanded = true },
-                                    modifier = Modifier.testTag("vehicle_type_dropdown_btn"),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = BrandBluePrimary.copy(alpha = 0.05f),
-                                        contentColor = BrandBluePrimary
-                                    ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBluePrimary)
-                                ) {
-                                    Icon(
-                                        imageVector = if (selectVehicleType == "CAR") Icons.Default.DirectionsCar else Icons.Default.TwoWheeler,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = if (selectVehicleType == "CAR") BrandBluePrimary else AccentAmber
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (selectVehicleType == "CAR") "Car (Sedan) ▾" else "Tricycle (Keke) ▾",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
-                                }
-
-                                DropdownMenu(
-                                    expanded = vehicleDropdownExpanded,
-                                    onDismissRequest = { vehicleDropdownExpanded = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Default.DirectionsCar, contentDescription = null, tint = BrandBluePrimary, modifier = Modifier.size(20.dp))
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Column {
-                                                    Text("Car (WayGo Sedan)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandBlueDark)
-                                                    Text("Comfortable 4-seater • Est. ${carFareEstimate} GMD", fontSize = 11.sp, color = NeutralGray)
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            selectVehicleType = "CAR"
-                                            vehicleDropdownExpanded = false
-                                        },
-                                        modifier = Modifier.testTag("dropdown_option_car")
-                                    )
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Default.TwoWheeler, contentDescription = null, tint = AccentAmber, modifier = Modifier.size(20.dp))
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Column {
-                                                    Text("Tricycle (Keke Express)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandBlueDark)
-                                                    Text("Affordable 3-wheeler • Est. ${tricycleFareEstimate} GMD", fontSize = 11.sp, color = NeutralGray)
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            selectVehicleType = "TRICYCLE"
-                                            vehicleDropdownExpanded = false
-                                        },
-                                        modifier = Modifier.testTag("dropdown_option_tricycle")
-                                    )
-                                }
-                            }
-                        }
+                        // Vehicle Selector Header
+                        Text("Select Vehicle Type", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandBlueDark)
 
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2076,6 +2036,33 @@ fun HomeScreenContent(
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        // Firestore Sync Status Notification
+                        if (!firestoreRideRequestStatus.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = SuccessGreen.copy(alpha = 0.12f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("firestore_save_status_card")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = firestoreRideRequestStatus!!,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = SuccessGreen
+                                    )
                                 }
                             }
                         }
@@ -4335,8 +4322,7 @@ fun ProfileScreenContent(
         val accountSections = remember(unreadInboxCount, trips.size, pastRides.size, profile?.isPaymentLinked) {
             buildList {
                 add(AccountSectionItem("PROFILE", "Profile", Icons.Default.Person, null))
-                add(AccountSectionItem("PAST_RIDES", "Ride History (Room)", Icons.Default.DirectionsCar, pastRides.size.takeIf { it > 0 }?.toString()))
-                add(AccountSectionItem("TRIP_LOG", "Trip Log", Icons.Default.History, trips.size.takeIf { it > 0 }?.toString()))
+                add(AccountSectionItem("TRIP_LOG", "Trip History", Icons.Default.History, trips.size.takeIf { it > 0 }?.toString()))
                 add(AccountSectionItem("INBOX", "Inbox", Icons.Default.Inbox, unreadInboxCount.takeIf { it > 0 }?.toString()))
                 add(AccountSectionItem("DRIVER_HUB", "Driver Hub", Icons.Default.TwoWheeler, "DRIVER"))
                 add(AccountSectionItem("PAYMENT", "Payment", Icons.Default.AccountBalanceWallet, if (profile?.isPaymentLinked == true) "Card" else null))
@@ -4411,13 +4397,7 @@ fun ProfileScreenContent(
 
         // FEATURE CONTENT SECTION BASED ON ACTIVE TAB
         when (activeAccountTab) {
-            "PAST_RIDES" -> {
-                PastRideHistoryView(
-                    viewModel = viewModel,
-                    onRebookRide = { _, _, _ -> onBack() }
-                )
-            }
-            "TRIP_LOG" -> {
+            "TRIP_LOG", "PAST_RIDES" -> {
                 // 📜 1. TRIP LOG SECTION WITH ENHANCED FILTERS
                 val nowMs = System.currentTimeMillis()
                 val oneDayMs = 24 * 3600 * 1000L

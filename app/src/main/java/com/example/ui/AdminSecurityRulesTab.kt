@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.CollectionSecurityRule
 import com.example.data.FirebaseSecurityRulesManager
+import com.example.data.FirestoreManager
 import com.example.data.SecurityAuditResult
 import com.example.ui.theme.*
 
@@ -46,6 +47,8 @@ fun AdminSecurityRulesTab(
     var showRawRulesDialog by remember { mutableStateOf(false) }
     var expandedCollection by remember { mutableStateOf<String?>(null) }
     var lastSyncTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
+    var isCheckingWebPortalSync by remember { mutableStateOf(false) }
+    var webPortalSyncResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
 
     if (showRawRulesDialog) {
         Dialog(onDismissRequest = { showRawRulesDialog = false }) {
@@ -297,6 +300,177 @@ fun AdminSecurityRulesTab(
                             Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("View Rules", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Web Admin Portal Live Synchronization Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("web_admin_portal_sync_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = PureWhite),
+                elevation = CardDefaults.cardElevation(2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(BrandBluePrimary.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Language,
+                                    contentDescription = null,
+                                    tint = BrandBluePrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    "Web Admin Portal Sync",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = BrandBlueDark
+                                )
+                                Text(
+                                    "https://waygowebadminportal.com/",
+                                    fontSize = 11.5.sp,
+                                    color = BrandBluePrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = SuccessGreen.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(SuccessGreen)
+                                )
+                                Text(
+                                    "Database: (default)",
+                                    color = SuccessGreen,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Configured for Android Studio Production deployment. Rides submitted on mobile sync directly to the Cloud Firestore '(default)' database monitored by the Web Admin Portal.",
+                        fontSize = 11.5.sp,
+                        color = NeutralGray,
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Synchronized Collections Badges
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("ride_requests", "rides", "active_ride_requests").forEach { coll ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BrandBlueDark.copy(alpha = 0.05f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBluePrimary.copy(alpha = 0.15f))
+                            ) {
+                                Text(
+                                    text = coll,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandBlueDark,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Test Web Portal Sync Button
+                    Button(
+                        onClick = {
+                            isCheckingWebPortalSync = true
+                            FirestoreManager.checkWebAdminPortalSyncStatus { success, message ->
+                                isCheckingWebPortalSync = false
+                                webPortalSyncResult = success to message
+                            }
+                        },
+                        enabled = !isCheckingWebPortalSync,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .testTag("test_portal_sync_button"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandBluePrimary)
+                    ) {
+                        if (isCheckingWebPortalSync) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Testing Portal Connectivity...", fontSize = 12.sp)
+                        } else {
+                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Test Web Admin Portal Sync", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Diagnostic Probe Result Message
+                    webPortalSyncResult?.let { (success, message) ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (success) SuccessGreen.copy(alpha = 0.1f) else Color(0xFFFEF2F2),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (success) SuccessGreen.copy(alpha = 0.3f) else Color(0xFFFCA5A5)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    if (success) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = if (success) SuccessGreen else Color(0xFFDC2626),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = message,
+                                    fontSize = 11.sp,
+                                    color = if (success) SuccessGreen else Color(0xFFDC2626),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 }

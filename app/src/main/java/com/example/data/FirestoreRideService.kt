@@ -118,14 +118,17 @@ object FirestoreRideService {
     private const val TAG = "FirestoreRideService"
     const val COLLECTION_RIDE_REQUESTS = "ride_requests"
     const val COLLECTION_ACTIVE_RIDE_REQUESTS = "active_ride_requests"
+    const val COLLECTION_RIDES = "rides"
     private const val COLLECTION_DRIVER_LOCATIONS = "driver_locations"
 
     val db: FirebaseFirestore?
         get() = FirestoreManager.firestore
 
     /**
-     * Creates and stores a new active ride request in Firestore 'ride_requests' collection
-     * and mirrors to 'active_ride_requests' for continuous real-time dispatch compatibility.
+     * Creates and stores a new active ride request in Firestore across all monitored collections:
+     * - 'ride_requests' (primary mobile collection)
+     * - 'active_ride_requests' (real-time dispatch collection)
+     * - 'rides' (Web Admin Portal: https://waygowebadminportal.com/)
      */
     fun createRideRequest(
         request: ActiveRideRequest,
@@ -155,15 +158,29 @@ object FirestoreRideService {
         }
 
         try {
-            // 1. Primary write to 'ride_requests' collection as required
+            var anySuccess = false
+            var completedCount = 0
+            val totalCollections = 3
+
+            fun checkDone(isSuccess: Boolean) {
+                if (isSuccess) anySuccess = true
+                completedCount++
+                if (completedCount >= totalCollections) {
+                    onComplete(anySuccess, docId)
+                }
+            }
+
+            // 1. Primary write to 'ride_requests' collection
             firestore.collection(COLLECTION_RIDE_REQUESTS)
                 .document(docId)
                 .set(requestData)
                 .addOnSuccessListener {
                     Log.i(TAG, "Ride request created successfully in Firestore 'ride_requests': $docId")
+                    checkDone(true)
                 }
                 .addOnFailureListener { e ->
                     Log.w(TAG, "Notice saving to 'ride_requests' in Firestore: ${e.localizedMessage}")
+                    checkDone(false)
                 }
 
             // 2. Also maintain 'active_ride_requests' for continuous real-time tracking compatibility
@@ -172,12 +189,36 @@ object FirestoreRideService {
                 .set(requestData)
                 .addOnSuccessListener {
                     Log.i(TAG, "Ride request synced to 'active_ride_requests': $docId")
-                    onComplete(true, docId)
+                    checkDone(true)
                 }
                 .addOnFailureListener { e ->
                     Log.w(TAG, "Notice syncing to 'active_ride_requests': ${e.localizedMessage}")
-                    onComplete(true, docId)
+                    checkDone(false)
                 }
+
+            // 3. Mirror to 'rides' for Web Admin Portal (https://waygowebadminportal.com/)
+            firestore.collection(COLLECTION_RIDES)
+                .document(docId)
+                .set(requestData)
+                .addOnSuccessListener {
+                    Log.i(TAG, "Ride request synced to 'rides' (waygowebadminportal.com): $docId")
+                    checkDone(true)
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Notice syncing to 'rides': ${e.localizedMessage}")
+                    checkDone(false)
+                }
+
+            // 4. Secondary legacy AI Studio database mirror if active
+            FirestoreManager.legacyAiStudioFirestore?.let { legacyDb ->
+                try {
+                    legacyDb.collection(COLLECTION_RIDE_REQUESTS).document(docId).set(requestData)
+                    legacyDb.collection(COLLECTION_ACTIVE_RIDE_REQUESTS).document(docId).set(requestData)
+                    legacyDb.collection(COLLECTION_RIDES).document(docId).set(requestData)
+                } catch (e: Exception) {
+                    Log.d(TAG, "Legacy database mirror notice: ${e.localizedMessage}")
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Firestore create ride request notice: ${e.localizedMessage}. Proceeding with local dispatch: $docId")
             onComplete(true, docId)
@@ -309,14 +350,27 @@ object FirestoreRideService {
             firestore.collection(COLLECTION_ACTIVE_RIDE_REQUESTS)
                 .document(requestId)
                 .update(updates)
+            firestore.collection(COLLECTION_RIDES)
+                .document(requestId)
+                .update(updates)
                 .addOnSuccessListener {
-                    Log.i(TAG, "Ride request $requestId updated to status: $status")
+                    Log.i(TAG, "Ride request $requestId updated to status: $status across all collections")
                     onComplete(true)
                 }
                 .addOnFailureListener { e ->
                     Log.w(TAG, "Notice updating status for $requestId (${e.localizedMessage}). Status applied locally.")
                     onComplete(true)
                 }
+
+            FirestoreManager.legacyAiStudioFirestore?.let { legacyDb ->
+                try {
+                    legacyDb.collection(COLLECTION_RIDE_REQUESTS).document(requestId).update(updates)
+                    legacyDb.collection(COLLECTION_ACTIVE_RIDE_REQUESTS).document(requestId).update(updates)
+                    legacyDb.collection(COLLECTION_RIDES).document(requestId).update(updates)
+                } catch (e: Exception) {
+                    Log.d(TAG, "Legacy database status update notice: ${e.localizedMessage}")
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Firestore update notice: ${e.localizedMessage}. Status applied locally.")
             onComplete(true)

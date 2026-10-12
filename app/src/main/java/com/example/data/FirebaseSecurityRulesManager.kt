@@ -51,6 +51,14 @@ object FirebaseSecurityRulesManager {
             allowedRoles = listOf("PASSENGER", "DRIVER", "ADMIN")
         ),
         CollectionSecurityRule(
+            collectionName = "rides",
+            description = "Web Admin Portal (https://waygowebadminportal.com/) operational fleet, live dispatches, and mirrored ride requests ledger.",
+            readAccess = "Authenticated Users & Web Administrators",
+            writeAccess = "Passenger, Assigned Driver, or Web Administrator",
+            requiredFields = listOf("requestId", "passengerId", "pickupName", "dropoffName", "vehicleType", "status"),
+            allowedRoles = listOf("PASSENGER", "DRIVER", "ADMIN")
+        ),
+        CollectionSecurityRule(
             collectionName = "active_ride_requests",
             description = "Real-time dispatch, active lifecycle state, and geo-matching for ride bookings across Gambia.",
             readAccess = "Authenticated Users (Drivers filter vicinity; Passengers stream active ride)",

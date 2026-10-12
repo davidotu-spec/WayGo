@@ -584,6 +584,13 @@ fun GoogleAccountAuthDialog(
                                 Toast.makeText(context, "⚠️ $err", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
+
+                            if (cleanPass.length < 6) {
+                                val err = "Password must be at least 6 characters long."
+                                errorMessage = err
+                                Toast.makeText(context, "⚠️ $err", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
                         }
 
                         errorMessage = ""

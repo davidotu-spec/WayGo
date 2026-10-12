@@ -161,21 +161,28 @@ data class ActiveRideRequest(
     fun toFirestoreMap(): Map<String, Any?> {
         val resolvedPickup = resolvePickupLocation()
         val resolvedDest = resolveDestination()
+        val pName = pickupName.ifBlank { resolvedPickup.name }
+        val dName = dropoffName.ifBlank { resolvedDest.name }
+        val pLatVal = if (pickupLat != 0.0) pickupLat else resolvedPickup.latitude
+        val pLngVal = if (pickupLng != 0.0) pickupLng else resolvedPickup.longitude
+        val dLatVal = if (dropoffLat != 0.0) dropoffLat else resolvedDest.latitude
+        val dLngVal = if (dropoffLng != 0.0) dropoffLng else resolvedDest.longitude
 
         return hashMapOf(
+            // Primary mobile keys
             "requestId" to requestId,
             "passengerId" to passengerId,
             "passengerName" to passengerName,
             "passengerPhone" to passengerPhone,
             "pickupLocation" to resolvedPickup.toMap(),
             "destination" to resolvedDest.toMap(),
-            "pickupName" to (pickupName.ifBlank { resolvedPickup.name }),
-            "pickupLat" to (if (pickupLat != 0.0) pickupLat else resolvedPickup.latitude),
-            "pickupLng" to (if (pickupLng != 0.0) pickupLng else resolvedPickup.longitude),
-            "dropoffName" to (dropoffName.ifBlank { resolvedDest.name }),
-            "destinationName" to (resolvedDest.name.ifBlank { dropoffName }),
-            "dropoffLat" to (if (dropoffLat != 0.0) dropoffLat else resolvedDest.latitude),
-            "dropoffLng" to (if (dropoffLng != 0.0) dropoffLng else resolvedDest.longitude),
+            "pickupName" to pName,
+            "pickupLat" to pLatVal,
+            "pickupLng" to pLngVal,
+            "dropoffName" to dName,
+            "destinationName" to dName,
+            "dropoffLat" to dLatVal,
+            "dropoffLng" to dLngVal,
             "vehicleType" to vehicleType,
             "fareGmd" to fareGmd,
             "paymentMethod" to paymentMethod,
@@ -189,7 +196,28 @@ data class ActiveRideRequest(
             "distanceKm" to distanceKm,
             "createdAt" to createdAt,
             "updatedAt" to updatedAt,
-            "geohash" to geohash
+            "geohash" to geohash,
+
+            // Web Admin Portal (waygowebadminportal.com) compatibility aliases
+            "id" to requestId,
+            "rideId" to requestId,
+            "userId" to passengerId,
+            "customerId" to passengerId,
+            "pickupAddress" to pName,
+            "pickup_address" to pName,
+            "pickup_lat" to pLatVal,
+            "pickup_lng" to pLngVal,
+            "dropoffAddress" to dName,
+            "dropoff_address" to dName,
+            "dropoff_lat" to dLatVal,
+            "dropoff_lng" to dLngVal,
+            "fare" to fareGmd,
+            "amount" to fareGmd,
+            "vehicle_type" to vehicleType,
+            "payment_method" to paymentMethod,
+            "created_at" to createdAt,
+            "updated_at" to updatedAt,
+            "timestamp" to createdAt
         )
     }
 
@@ -321,6 +349,9 @@ object ActiveRideRequestFirestoreSchema {
 
     /** Legacy / real-time collection path in Firestore */
     const val COLLECTION_NAME = "active_ride_requests"
+
+    /** Web Admin Portal unified rides collection path in Firestore */
+    const val COLLECTION_RIDES = "rides"
 
     // Primary Field Keys
     const val FIELD_REQUEST_ID = "requestId"

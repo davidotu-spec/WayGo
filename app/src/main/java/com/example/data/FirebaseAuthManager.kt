@@ -61,6 +61,8 @@ object FirebaseAuthManager {
         put("ousman@waygo.gm", "driver123")
         put("fatou@waygo.gm", "pass123")
         put("admin@waygo.gm", "admin123")
+        put("apple.user@icloud.com", "applePass123")
+        put("apple.driver@icloud.com", "applePass123")
     }
 
     /**
@@ -112,6 +114,7 @@ object FirebaseAuthManager {
      */
     fun signInWithGoogleIdToken(
         idToken: String,
+        password: String? = null,
         onSuccess: (email: String, name: String, isLinked: Boolean) -> Unit,
         onError: (String) -> Unit
     ) {
@@ -126,8 +129,10 @@ object FirebaseAuthManager {
                 val verifiedName = verification.name
                 val isLinked = verification.isLinkedToExistingAccount
 
-                // Auto-link: If user does not have a local password entry yet, register securely with token credentials
-                if (!isUserRegistered(verifiedEmail)) {
+                // Auto-link or save verified credentials
+                if (!password.isNullOrBlank()) {
+                    saveLocalCredentials(verifiedEmail, password)
+                } else if (!isUserRegistered(verifiedEmail)) {
                     saveLocalCredentials(verifiedEmail, "google_oauth_${verification.subject.takeLast(8)}")
                     Log.i(TAG, "Auto-created and registered account for verified Google user: $verifiedEmail")
                 } else {
@@ -137,6 +142,14 @@ object FirebaseAuthManager {
                 onSuccess(verifiedEmail, verifiedName, isLinked)
             }
         }
+    }
+
+    fun signInWithGoogleIdToken(
+        idToken: String,
+        onSuccess: (email: String, name: String, isLinked: Boolean) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        signInWithGoogleIdToken(idToken, password = null, onSuccess = onSuccess, onError = onError)
     }
 
     /**

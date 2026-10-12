@@ -232,4 +232,37 @@ class RideRequestFormFirestoreTest {
         assertEquals(5.2, formData.distanceKm, 0.01)
         assertEquals("usr_mariama", formData.passengerId)
     }
+
+    @Test
+    fun testWebAdminPortalMultiCollectionAndSchemaSync() {
+        assertEquals("rides", FirestoreRideService.COLLECTION_RIDES)
+        assertEquals("rides", ActiveRideRequestFirestoreSchema.COLLECTION_RIDES)
+
+        val pickup = RideLocation(name = "Kairaba Ave", address = "Kairaba Ave", latitude = 13.4471, longitude = -16.6791)
+        val dest = RideLocation(name = "Albert Market", address = "Albert Market", latitude = 13.4533, longitude = -16.5746)
+
+        val request = ActiveRideRequest.createPending(
+            requestId = "req_portal_sync_01",
+            passengerId = "usr_portal_test",
+            passengerName = "Admin Test User",
+            passengerPhone = "+220 999 0000",
+            pickupLocation = pickup,
+            destination = dest,
+            fareGmd = 200,
+            vehicleType = "CAR"
+        )
+
+        val map = request.toFirestoreMap()
+        // Check web portal aliases
+        assertEquals("req_portal_sync_01", map["id"])
+        assertEquals("req_portal_sync_01", map["rideId"])
+        assertEquals("usr_portal_test", map["userId"])
+        assertEquals("usr_portal_test", map["customerId"])
+        assertEquals(200, map["fare"])
+        assertEquals(200, map["amount"])
+        assertEquals("CAR", map["vehicle_type"])
+        assertEquals("CASH", map["payment_method"])
+        assertNotNull(map["created_at"])
+        assertNotNull(map["timestamp"])
+    }
 }
